@@ -523,44 +523,6 @@ function _drawDecal(g, d, model, cxAccPx) {
   if (st.glow) g.shadowBlur = 0;
 }
 
-// ── タイヤ（道路と同一の透視投影で直接楕円描画）──
-function _drawTires(g, pts, model, carType, bodyCol, cxAccPx) {
-  // タイヤ中心のローカル座標
-  const isLong = (carType === 'truck');
-  const tPos = isLong
-    ? [[-0.92, 0.22, 0.55],[ 0.92, 0.22, 0.55],[-0.92, 0.22, 3.80],[ 0.92, 0.22, 3.80]]
-    : [[-0.90, 0.22, 0.28],[ 0.90, 0.22, 0.28],[-0.90, 0.22, 1.92],[ 0.90, 0.22, 1.92]];
-
-  const tireRY = 0.22; // タイヤ半径(ローカル)
-  const tireW  = isLong ? 0.20 : 0.16;  // タイヤ幅(ローカル)
-
-  for (const [lx, ly, lz] of tPos) {
-    const w = _m4v(model, lx, ly, lz, 1);
-    if (w[2] <= 0.5) continue;
-    const pc = _projWorld(w[0], w[1], w[2], cxAccPx);
-    if (!pc) continue;
-
-    // スクリーン上のサイズ = ワールドサイズ * (CAM_D/Zw) * (W/2 or H/2)
-    const s = CAM_D / w[2];
-    const rPx = tireRY * s * (H * 0.5);
-    const wPx = tireW  * s * (W * 0.5);
-    if (rPx < 1) continue;
-
-    // タイヤ本体（黒楕円）
-    g.fillStyle   = '#050810';
-    g.strokeStyle = _hexA(bodyCol, 0.40);
-    g.lineWidth   = Math.max(0.5, rPx * 0.06);
-    g.beginPath();
-    g.ellipse(pc.sx, pc.sy, Math.max(1, wPx * 0.55), Math.max(1, rPx), 0, 0, Math.PI * 2);
-    g.fill(); g.stroke();
-    // ホイール
-    g.fillStyle = _hexA(bodyCol, 0.28);
-    g.beginPath();
-    g.ellipse(pc.sx, pc.sy, Math.max(0.5, wPx * 0.30), Math.max(0.5, rPx * 0.55), 0, 0, Math.PI * 2);
-    g.fill();
-  }
-}
-
 // ── 地面影 ──
 function _drawShadow(g, pts) {
   const brl = pts.BRL, brr = pts.BRR;
@@ -694,7 +656,6 @@ function drawCar3D(g, Xw, Yw, Zw, cxAccPx, bodyCol, glowCol,
     });
   }
 
-  _drawTires(g, pts, model, carType, glowCol || bodyCol, cxAccPx);
   _drawGlow(g, pts, glowCol || bodyCol);
 
   // 排気炎（プレーヤー高速時）
@@ -772,22 +733,12 @@ function hlGlow(g,oc,cW){g.shadowColor=oc?'#ffffff':'#ffffaa';g.shadowBlur=Math.
 
 function drawPlayerCar(g,bpm,t){
   // bank>0(右カーブ)→左側面わずかに見える, bank<0→右側面
-  const yaw   = player.bank * 0.55;
-  const rollZ = player.spin !== 0 ? player.spin : player.bank * 0.15;
-  const hf    = player.hitFlash > 0;
+  // player.slip: 衝突スリップによる車体の向きの振れ(ヨー)。+で鼻先が右。
+  // 衝突時はロール(横転)も白フラッシュもさせず、向きが左右に振れるだけにする。
+  const yaw   = player.bank * 0.55 + player.slip;
+  const rollZ = player.bank * 0.15;
   // road と同一の cxAcc（直前の道路中心オフセット）と単位系を共有する。
   drawCar3D(g, player.x * ROADW, 0, PLAYER_Z, roadCenterOffsetPx,
-            '#cc0020', '#5df0c8', yaw, rollZ, 'ferrari328', true, hf, 1.0);
-  if(hf){
-    const p  = _projWorld(player.x * ROADW, 0, PLAYER_Z, roadCenterOffsetPx);
-    const s  = CAM_D / PLAYER_Z;
-    const cW = WORLD_CAR_HALF_W * s * (W * 0.5);
-    const cH = cW * 0.58;
-    g.save();
-    g.globalAlpha = player.hitFlash/12*0.45;
-    g.fillStyle='#ffffff';
-    g.fillRect(p.sx-cW*0.7, p.sy-cH*2.2, cW*1.4, cH*2.2);
-    g.restore();
-  }
+            '#cc0020', '#5df0c8', yaw, rollZ, 'ferrari328', true, false, 1.0);
 }
 

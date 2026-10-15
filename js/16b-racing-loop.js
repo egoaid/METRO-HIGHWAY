@@ -53,7 +53,7 @@ function frame(t){
     const ax = Math.abs(player.x);
     if(ax > 0.90){
       player.speed = Math.max(0, player.speed - 40 * dt);
-      if(ax > 0.97) takeDamage();
+      if(ax > 0.97) takeDamage(-Math.sign(player.x)); // 中央側へ戻す
     }
 
     game.dist += player.speed * dt / 3.6;
@@ -112,15 +112,22 @@ function frame(t){
 
   cam.pos+=player.speed*dt*CAM_SCALE;
 
-  // ── スピン更新 ──
-  if(player.spin!==0||player.spinV!==0){
-    player.spin+=player.spinV;
-    player.spinV*=0.82; // 減衰
-    if(Math.abs(player.spinV)<0.002){ player.spinV=0; player.spin=0; }
-    // スピン中は速度も落とす
-    if(Math.abs(player.spin)>0.05) player.speed=Math.max(0,player.speed-SPD_BRAKE*0.4*dt);
+  // ── 衝突スリップ更新（横滑り: ヨーの振れ + 横への流れ。横転はしない）──
+  if(player.slip!==0||player.slipV!==0||player.slideV!==0){
+    // ヨー: 減衰ばねで0へ戻る（半陰的オイラー）
+    player.slipV += (-SLIP_K*player.slip - SLIP_C*player.slipV)*dt;
+    player.slip  += player.slipV*dt;
+    // 横: 指数減衰しながら流れる。路肩ペナルティ域へは入れない（内向きの移動は常に許可）
+    const nx = player.x + player.slideV*dt;
+    if(Math.abs(nx)<=SLIDE_LIMIT || Math.abs(nx)<Math.abs(player.x)) player.x = nx;
+    else player.slideV = 0;
+    player.slideV *= Math.exp(-SLIDE_DECAY*dt);
+    if(Math.abs(player.slip)<0.002 && Math.abs(player.slipV)<0.02 && Math.abs(player.slideV)<0.005){
+      player.slip=0; player.slipV=0; player.slideV=0;
+    }
+    // 横滑り中は速度も少し落とす
+    if(Math.abs(player.slip)>0.03) player.speed=Math.max(0,player.speed-SPD_BRAKE*0.4*dt);
   }
-  if(player.hitFlash>0) player.hitFlash--;
 
   // ══ 交通スポーン ══
   spawnTick++;
@@ -174,7 +181,7 @@ function frame(t){
       if(fwd >= -0.5 && fwd < 3){
         const hitW = car.carType==='truck' ? 0.35 : 0.26;
         if(Math.abs(car.x - player.x) < hitW){
-          car.hitTimer=40; takeDamage();
+          car.hitTimer=40; takeDamage(Math.sign(player.x - car.x)); // 相手から離れる側へ
         }
       }
     }
@@ -514,10 +521,9 @@ function drawScene(t,bpm){
       const nIdx   = Math.max(0, Math.floor(nFloat));
       const cxAcc  = sliceMap.has(nIdx) ? sliceMap.get(nIdx) : 0;
 
-      const hitFlash = car.hitTimer > 0;
       try {
         drawTrafficCar(g, car.x * ROADW, relZ, cxAcc,
-          car.col, car.carType, car.heading, hitFlash);
+          car.col, car.carType, car.heading, false);
       } catch(_) {
         // 1台の描画で例外が出ても、手前の他の車の描画を巻き添えで
         // 止めない（このtry/catchが無いと forEach 全体が中断し、

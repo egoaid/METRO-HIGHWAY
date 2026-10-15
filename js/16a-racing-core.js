@@ -49,10 +49,18 @@ let mode=MODE.DEMO;
 const game={hp:3,maxHp:3,dist:0,best:0,hitTimer:0,overTimer:0};
 const cam={pos:0};
 const player={x:0,xv:0,speed:0,bank:0,
-  spin:0,    // 衝突回転角度(rad)
-  spinV:0,   // 回転速度
-  hitFlash:0 // 衝突フラッシュカウンタ
+  slip:0,    // 衝突スリップ: 車体の向き(ヨー角, rad)。+で鼻先が右。ロール(横転)はしない
+  slipV:0,   // ヨー角速度(rad/s)
+  slideV:0   // 衝突で横へ流れる速度(player.x単位/s)
 };
+// ── 衝突スリップ(横滑り)の定数 ──
+// ヨー角は減衰ばね: slip'' = -K*slip - C*slip'。固有角速度 ω=√K=10rad/s(≈1.6Hz)、
+// 減衰比 ζ=C/(2ω)=0.25 → 左右に2〜3回振れて約1秒で収まる。戻り際に「パッと0に飛ぶ」ことはない。
+const SLIP_K=100, SLIP_C=5;
+const SLIP_KICK=2.6;     // 衝突直後のヨー角速度(rad/s)。最大ヨー角 約0.2rad(≈11°)
+const SLIDE_KICK=0.9;    // 衝突直後の横速度。指数減衰の積分で合計 SLIDE_KICK/SLIDE_DECAY ≒ 0.15 だけ流れる
+const SLIDE_DECAY=6;     // 横速度の減衰率(1/s)
+const SLIDE_LIMIT=0.90;  // スリップで路肩ペナルティ域(>0.90)へ押し出さない上限
 const keys={L:false,R:false,U:false,D:false};
 
 // 道路中心線のスクリーンオフセット(px) — drawScene で毎フレーム更新
@@ -319,20 +327,23 @@ function startGame(){
   mode=MODE.PLAY;
   game.hp=game.maxHp;game.dist=0;game.hitTimer=0;game.overTimer=0;
   cam.pos=0;player.x=0;player.xv=0;player.speed=0;player.bank=0;
+  player.slip=0;player.slipV=0;player.slideV=0;
   traffic=[];spawnTick=0;
   addLog('GAME START!  ↑ACCEL  ↓BRAKE  ←→STEER');
   const gb=document.getElementById('vfdGameBtn');
   if(gb){gb.textContent='DEMO';gb.classList.remove('btn-red');gb.classList.add('btn');}
 }
 
-function takeDamage(){
+// pushDir: 車体が流れる向き(+1=右 / -1=左)。相手車なら「相手から離れる側」、
+//          路肩なら「中央へ戻る側」を呼び出し側が渡す。未指定/0(真横一致)のみランダム。
+function takeDamage(pushDir){
   if(game.hitTimer>0)return;
   playCrashSound();
   game.hp--;game.hitTimer=90;
-  // 衝突回転: ランダム方向に回転
-  const dir=(Math.random()<0.5)?1:-1;
-  player.spinV=dir*0.18;
-  player.hitFlash=12;
+  // 衝突スリップ: 横転ではなく、ヨー(向き)の振れと横への流れだけ
+  const dir=(pushDir===1||pushDir===-1)?pushDir:((Math.random()<0.5)?1:-1);
+  player.slipV=dir*SLIP_KICK;
+  player.slideV=dir*SLIDE_KICK;
   addLog(`DAMAGE! HP:${'♥'.repeat(Math.max(0,game.hp))}`);
   if(game.hp<=0)endGame();
 }
@@ -345,6 +356,7 @@ function endGame(){
   setTimeout(()=>{
     mode=MODE.DEMO;
     player.speed=0;player.x=0;player.xv=0;player.bank=0;
+    player.slip=0;player.slipV=0;player.slideV=0;
     traffic=[];
     const gb=document.getElementById('vfdGameBtn');
     if(gb){gb.textContent='PLAY';gb.classList.add('btn-red');gb.classList.remove('btn');}
