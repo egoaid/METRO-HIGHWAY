@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover">
+<title>Metro Highway — Cyberpunk Drone Synth & Racing Machine</title>
+<meta name="description" content="Metro Highway is a free browser-based ambient drone synthesizer, rhythm machine, and step sequencer with an embedded low-poly cyberpunk racing game. No install required — installable as an offline PWA.">
+<meta name="keywords" content="drone synthesizer, web audio synth, browser synth, ambient music generator, step sequencer, rhythm machine, lo-fi synth, retro racing game, PWA music app">
+<meta name="author" content="egoaid">
+<meta name="robots" content="index, follow">
+<meta name="theme-color" content="#141518">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Metro Highway — Cyberpunk Drone Synth & Racing Machine">
+<meta property="og:description" content="A free browser-based ambient drone synthesizer, rhythm machine, and step sequencer with an embedded low-poly cyberpunk racing game. Installable as an offline-capable PWA.">
+<meta property="og:image" content="icons/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:site_name" content="Metro Highway">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="ja_JP">
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Metro Highway — Cyberpunk Drone Synth & Racing Machine">
+<meta name="twitter:description" content="A free browser-based ambient drone synthesizer, rhythm machine, and step sequencer with an embedded low-poly cyberpunk racing game.">
+<meta name="twitter:image" content="icons/og-image.png">
+
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+
+<!-- Structured data for search engines and AI answer engines -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Metro Highway",
+  "applicationCategory": "MultimediaApplication",
+  "operatingSystem": "Any (runs in a web browser)",
+  "description": "A free browser-based ambient drone synthesizer, rhythm machine and step sequencer with an embedded low-poly cyberpunk racing game. Installable as a PWA and works fully offline.",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "browserRequirements": "Requires a browser with Web Audio API support",
+  "author": { "@type": "Organization", "name": "egoaid" }
+}
+</script>
+</head>
+<body>
+
+<!-- ══ TOP STATUS BAR ══ -->
+<!-- hidden inputs: removed UI sliders — JS still reads these values -->
+<input type="hidden" id="seqVol"     value="0.8">
+<input type="hidden" id="slowSeqVol" value="0.5">
+<input type="hidden" id="rhythmVol"  value="0.7">
+<input type="hidden" id="chorusMix"  value="0">
+<input type="hidden" id="delayMix"   value="0">
+<div class="topbar">
+  <div class="brand">
+    <span class="brand-sub">DRONE MACHINE</span>
+    <div style="display:flex;align-items:baseline;gap:7px;line-height:1;">
+      <span class="brand-name">METRO HIGHWAY</span>
+      <span style="font-size:8px;letter-spacing:2px;color:var(--txt-2);padding-bottom:2px;">v1.0.1</span>
+    </div>
+  </div>
+  <div class="header-dots">
+    <div class="dot red"></div>
+    <div class="dot orange"></div>
+    <div class="dot yellow"></div>
+  </div>
+  <div class="lcd-block">
+    <div class="lcd-sub">TONE NAME</div>
+    <div class="lcd-val" id="lcdDisplay">INIT____</div>
+  </div>
+  <!-- VFD Oscilloscope -->
+  <div class="vfd-scope" id="vfdScope">
+    <canvas id="scopeCanvas"></canvas>
+    <div class="vfd-scope-label">OSC</div>
+  </div>
+
+  <!-- REC -->
+  <div class="rec-block">
+    <button class="rec-btn" id="recBtn"><span class="rec-dot"></span>REC</button>
+    <span class="rec-time" id="recTime">00:00</span>
+  </div>
+
+
+</div>
+
+<!-- ══ MOBILE REC BAR (スマホのみ表示) ══ -->
+<div class="mobile-rec-bar">
+  <button class="rec-btn" id="recBtnMobile"><span class="rec-dot"></span>REC</button>
+  <span class="rec-time" id="recTimeMobile">00:00</span>
+  <span style="font-size:8px;letter-spacing:1.5px;color:var(--txt-2);margin-left:auto;">RECORDING</span>
+</div>
+
+<!-- ══ WORKSPACE ══ -->
+<div class="workspace">
+
+<!-- ────────────────────────────────────────
+     LEFT COLUMN  /  SYNTH + FX
+──────────────────────────────────────────── -->
+<div class="col" id="colLeft">
+
+<!-- ── PART: SYNTH ── -->
+<div class="part-panel" data-part="synth">
+
+  <!-- VFD RACING card -->
+  <div class="card" id="vfdRacingCard" style="margin-bottom:10px;">
+    <div class="card-head">
+      <span class="card-title">VFD RACING <span style="font-size:8px;color:var(--txt-2);letter-spacing:1px;">CYBERPUNK DRIVE</span></span>
+      <div class="card-actions" style="gap:6px;">
+        <span id="vfdUptimeDisplay" style="font-size:9px;letter-spacing:1.5px;color:var(--lcd-mid);text-shadow:0 0 4px rgba(93,240,200,0.4);white-space:nowrap;">00:00:00</span>
+        <button id="vfdGameBtn" class="btn btn-red" style="font-size:8px;padding:0 8px;height:20px;">PLAY</button>
+        <button id="vfdToggleBtn" class="btn btn-grn" style="font-size:8px;padding:0 8px;height:20px;">ON</button>
+        <button id="vfdFullscreenBtn" class="btn" style="font-size:13px;padding:0 6px;height:20px;line-height:1;" title="Fullscreen">⛶</button>
+      </div>
+    </div>
+    <div id="vfdGameViewport" style="position:relative;background:#000408;overflow:hidden;height:220px;border-bottom:1px solid var(--bd-1);">
+      <svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:10;opacity:0.09;" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <pattern id="hcp" x="0" y="0" width="10" height="8.66" patternUnits="userSpaceOnUse">
+            <polygon points="5,0 10,2.5 10,6.16 5,8.66 0,6.16 0,2.5" fill="none" stroke="#5df0c8" stroke-width="0.35"/>
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#hcp)"/>
+      </svg>
+      <div style="position:absolute;inset:0;background:repeating-linear-gradient(to bottom,transparent 0,transparent 2px,rgba(0,0,0,0.16) 2px,rgba(0,0,0,0.16) 3px);pointer-events:none;z-index:11;"></div>
+      <div style="position:absolute;top:0;left:0;right:0;height:35%;background:linear-gradient(to bottom,rgba(255,255,255,0.022),transparent);pointer-events:none;z-index:12;"></div>
+      <canvas id="vfdRacingCanvas" style="position:absolute;inset:0;width:100%;height:100%;z-index:5;display:block;"></canvas>
+    </div>
+  </div>
+
+  <!-- AUTO DRONE card -->
+  <div class="card" id="autoDroneCard">
+    <div class="card-head">
+      <span class="card-title">Auto Drone <span style="font-size:8px;color:var(--txt-2);letter-spacing:1px;">INFINITE MACHINE</span></span>
+      <div class="card-actions">
+        <button id="autoDroneBtn" class="btn btn-grn btn-lg">START</button>
+      </div>
+    </div>
+    <!-- ステータスバー -->
+    <div id="autoDroneStatus" style="display:none;align-items:center;gap:10px;padding:5px 12px;background:var(--bg-0);border-bottom:1px solid var(--bd-1);">
+      <span style="font-size:8px;letter-spacing:2px;color:var(--txt-2);">SONG</span>
+      <span id="adSongCounter" style="font-size:11px;color:var(--lcd-txt);letter-spacing:2px;text-shadow:0 0 6px rgba(93,240,200,0.5);">1 / ∞</span>
+      <span style="font-size:8px;letter-spacing:2px;color:var(--txt-2);margin-left:8px;">PHASE</span>
+      <span id="adPhaseLabel" style="font-size:9px;color:var(--sig-amb);letter-spacing:2px;">—</span>
+      <span style="font-size:8px;letter-spacing:2px;color:var(--txt-2);margin-left:8px;">REMAIN</span>
+      <span id="adRemain" style="font-size:11px;color:var(--lcd-txt);letter-spacing:2px;min-width:42px;text-shadow:0 0 6px rgba(93,240,200,0.5);">—</span>
+    </div>
+    <div class="card-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
+
+        <!-- SONG DURATION -->
+        <div style="background:var(--bg-0);border:1px solid var(--bd-1);border-radius:var(--r-md);padding:7px 9px;">
+          <div style="font-size:8px;letter-spacing:2px;color:var(--txt-2);margin-bottom:5px;">SONG DURATION</div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <div class="ctl" style="flex:1;">
+              <div class="ctl-label">MIN</div>
+              <select id="adDurMin">
+                <option value="30">30 sec</option>
+                <option value="60" selected>1 min</option>
+                <option value="90">1:30</option>
+                <option value="120">2 min</option>
+                <option value="180">3 min</option>
+              </select>
+            </div>
+            <div style="font-size:10px;color:var(--txt-2);padding-top:14px;">—</div>
+            <div class="ctl" style="flex:1;">
+              <div class="ctl-label">MAX</div>
+              <select id="adDurMax">
+                <option value="60">1 min</option>
+                <option value="90">1:30</option>
+                <option value="120" selected>2 min</option>
+                <option value="180">3 min</option>
+                <option value="300">5 min</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- BPM RANGE -->
+        <div style="background:var(--bg-0);border:1px solid var(--bd-1);border-radius:var(--r-md);padding:7px 9px;">
+          <div style="font-size:8px;letter-spacing:2px;color:var(--txt-2);margin-bottom:5px;">BPM RANGE</div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <div class="ctl" style="flex:1;">
+              <div class="ctl-label">MIN</div>
+              <input type="number" id="adBpmMin" min="40" max="240" value="70"
+                style="width:100%;background:var(--bg-2);color:var(--txt-0);border:1px solid var(--bd-2);border-radius:var(--r-sm);padding:3px 6px;font-family:'Share Tech Mono',monospace;font-size:12px;outline:none;text-align:center;">
+            </div>
+            <div style="font-size:10px;color:var(--txt-2);padding-top:14px;">—</div>
+            <div class="ctl" style="flex:1;">
+              <div class="ctl-label">MAX</div>
+              <input type="number" id="adBpmMax" min="40" max="240" value="130"
+                style="width:100%;background:var(--bg-2);color:var(--txt-0);border:1px solid var(--bd-2);border-radius:var(--r-sm);padding:3px 6px;font-family:'Share Tech Mono',monospace;font-size:12px;outline:none;text-align:center;">
+            </div>
+          </div>
+        </div>
+
+        <!-- SONGS / FADE -->
+        <div style="background:var(--bg-0);border:1px solid var(--bd-1);border-radius:var(--r-md);padding:7px 9px;">
+          <div style="font-size:8px;letter-spacing:2px;color:var(--txt-2);margin-bottom:5px;">SONGS &amp; FADE</div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <div class="ctl" style="flex:1;">
+              <div class="ctl-label">SONGS</div>
+              <select id="adSongCount">
+                <option value="0">∞</option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="5">5</option>
+                <option value="10" selected>10</option>
+                <option value="20">20</option>
+                <option value="50">50</option>
+                <option value="99">99</option>
+              </select>
+            </div>
+            <div class="ctl" style="flex:1;">
+              <div class="ctl-label">FADE</div>
+              <select id="adFade">
+                <option value="1">1 sec</option>
+                <option value="2">2 sec</option>
+                <option value="3" selected>3 sec</option>
+                <option value="5">5 sec</option>
+                <option value="8">8 sec</option>
+                <option value="12">12 sec</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- GAP -->
+        <div style="background:var(--bg-0);border:1px solid var(--bd-1);border-radius:var(--r-md);padding:7px 9px;">
+          <div style="font-size:8px;letter-spacing:2px;color:var(--txt-2);margin-bottom:5px;">GAP BETWEEN SONGS</div>
+          <div class="ctl">
+            <div class="ctl-label">SILENCE</div>
+            <select id="adGap">
+              <option value="0">0 sec</option>
+              <option value="1">1 sec</option>
+              <option value="2" selected>2 sec</option>
+              <option value="3">3 sec</option>
+              <option value="5">5 sec</option>
+              <option value="10">10 sec</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- FX SEND RANGE -->
+        <div style="background:var(--bg-0);border:1px solid var(--bd-1);border-radius:var(--r-md);padding:7px 9px;grid-column:span 2;">
+          <div style="font-size:8px;letter-spacing:2px;color:var(--txt-2);margin-bottom:5px;">FX SEND RANGE <span style="font-size:7px;color:var(--txt-2);">— max per channel</span></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+            <div class="ctl">
+              <div class="ctl-label">Chorus Max</div>
+              <input type="range" id="adChorusMax" min="0" max="1" step="0.05" value="0.25">
+              <div class="ctl-value" id="adChorusMaxVal">25%</div>
+            </div>
+            <div class="ctl">
+              <div class="ctl-label">Echo Max</div>
+              <input type="range" id="adEchoMax" min="0" max="1" step="0.05" value="0.20">
+              <div class="ctl-value" id="adEchoMaxVal">20%</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Tone / Oscillator card (統合) -->
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">Tone / Oscillator</span>
+      <div class="card-actions">
+        <button id="panicBtn" class="btn btn-red">PANIC</button>
+        <button id="resetBtn" class="btn">RESET</button>
+        <button id="randomBtn" class="btn btn-red">RANDOM</button>
+      </div>
+    </div>
+    <div class="card-body">
+      <!-- Preset select -->
+      <div class="ctl" style="margin-bottom:6px;">
+        <select id="preset">
+          <option value="init">-- INIT --</option>
+          <optgroup label="── PIANO ──">
+            <option value="elecPiano">ELEC PIANO</option>
+            <option value="mtPiano">MT-PIANO</option>
+          </optgroup>
+          <optgroup label="── ORGAN ──">
+            <option value="pipeOrgan">PIPE ORGAN</option>
+            <option value="mtOrgan">MT-ORGAN</option>
+          </optgroup>
+          <optgroup label="── STRINGS ──">
+            <option value="strings2">STRINGS 2</option>
+            <option value="violin">VIOLIN</option>
+            <option value="mtStrings">MT-STRINGS</option>
+            <option value="mtViolin">MT-VIOLIN</option>
+          </optgroup>
+          <optgroup label="── BRASS ──">
+            <option value="trumpet">TRUMPET</option>
+            <option value="brass">BRASS ENS</option>
+            <option value="mtBrass">MT-BRASS</option>
+            <option value="mtTrumpet">MT-TRUMPET</option>
+          </optgroup>
+          <optgroup label="── WOODWIND ──">
+            <option value="clarinet">CLARINET</option>
+            <option value="saxophone">SAXOPHONE</option>
+            <option value="mtFlute">MT-FLUTE</option>
+            <option value="mtHarmonica">MT-HARMONICA</option>
+          </optgroup>
+          <optgroup label="── MALLET ──">
+            <option value="bell">BELL</option>
+            <option value="mtMarimba">MT-MARIMBA</option>
+            <option value="mtVibraphone">MT-VIBRAPHONE</option>
+            <option value="mtXylophone">MT-XYLOPHONE</option>
+            <option value="mtBanjo">MT-BANJO</option>
+          </optgroup>
+          <optgroup label="── SYNTH ──">
+            <option value="synthLead">SYNTH LEAD</option>
+            <option value="synthPad">SYNTH PAD</option>
+            <option value="synthBass">SYNTH BASS</option>
+          </optgroup>
+          <optgroup label="── GUITAR ──">
+            <option value="mtGuitar">MT-GUITAR</option>
+            <option value="mtBass">MT-BASS</option>
+          </optgroup>
+          <optgroup label="── LO-FI ──">
+            <option value="vhsPad">VHS PAD</option>
+            <option value="brokenCassette">BROKEN CASS</option>
+            <option value="gameboyLead">GAMEBOY</option>
+            <option value="hauntedToy">HAUNTED TOY</option>
+            <option value="mtHarpsichord">MT-HARPSICHORD</option>
+            <option value="mtChoirPad">MT-CHOIR PAD</option>
+            <option value="mtFantasia">MT-FANTASIA</option>
+          </optgroup>
+          <optgroup label="── DRONE ──">
+            <option value="tibetanBowl">TIBETAN BOWL</option>
+            <option value="tanpura">TANPURA</option>
+            <option value="shimmerDrone">SHIMMER DRONE</option>
+            <option value="subOctave">SUB OCTAVE</option>
+            <option value="organPoint">ORGAN POINT</option>
+          </optgroup>
+          <optgroup label="── NATURE ──">
+            <option value="ocean">OCEAN</option>
+            <option value="rain">RAIN</option>
+            <option value="stream">STREAM</option>
+            <option value="birds">BIRDS</option>
+            <option value="insects">INSECTS</option>
+          </optgroup>
+          <optgroup label="── USER ──" id="userPresetGroup"></optgroup>
+        </select>
+      </div>
+      <!-- Waveform -->
+      <div class="ctl" style="margin-bottom:6px;">
+        <div class="ctl-label">Waveform</div>
+        <select id="waveform">
+          <option value="square">SQUARE</option>
+          <option value="sawtooth">SAW</option>
+          <option value="triangle">TRIANGLE</option>
+          <option value="sine">SINE</option>
+        </select>
+      </div>
+      <!-- User preset save row -->
+      <div class="preset-save-row" style="margin-bottom:8px;">
+        <label>User Preset</label>
+        <input type="text" id="userPresetName" placeholder="MY SOUND 1" maxlength="16" spellcheck="false">
+        <button id="userPresetSaveBtn" class="btn btn-red">SAVE</button>
+        <button id="userPresetDeleteBtn" class="btn">DEL</button>
+      </div>
+
+      <!-- Envelope -->
+      <div class="sub-label">Envelope</div>
+      <div class="cg cg-4" style="margin-bottom:6px;">
+        <div class="ctl"><div class="ctl-label">Attack</div><input id="attack" type="range" min="0.001" max="2" step="0.001" value="0.01"><div class="ctl-value" id="attackValue"></div></div>
+        <div class="ctl"><div class="ctl-label">Decay</div><input id="decay" type="range" min="0.01" max="2" step="0.01" value="0.2"><div class="ctl-value" id="decayValue"></div></div>
+        <div class="ctl"><div class="ctl-label">Sustain</div><input id="sustain" type="range" min="0" max="1" step="0.01" value="0.5"><div class="ctl-value" id="sustainValue"></div></div>
+        <div class="ctl"><div class="ctl-label">Release</div><input id="release" type="range" min="0.01" max="3" step="0.01" value="0.5"><div class="ctl-value" id="releaseValue"></div></div>
+      </div>
+
+      <!-- Filter -->
+      <div class="sub-label">Filter</div>
+      <div class="cg cg-3" style="margin-bottom:6px;">
+        <div class="ctl"><div class="ctl-label">Brightness</div><input id="brightness" type="range" min="200" max="10000" value="2800"><div class="ctl-value" id="brightnessValue"></div></div>
+        <div class="ctl"><div class="ctl-label">Resonance</div><input id="resonance" type="range" min="0" max="20" value="0"><div class="ctl-value" id="resonanceValue"></div></div>
+        <div class="ctl"><div class="ctl-label">Spkr Size</div><input id="speaker" type="range" min="300" max="6000" value="4000"><div class="ctl-value" id="speakerValue"></div></div>
+      </div>
+
+      <!-- LFO / Modulation -->
+      <div class="sub-label">LFO / Modulation</div>
+      <div class="cg cg-2">
+        <div class="ctl"><div class="ctl-label">LFO Rate</div><input id="lfoRate" type="range" min="0" max="20" step="0.1" value="0"><div class="ctl-value" id="lfoRateValue"></div></div>
+        <div class="ctl"><div class="ctl-label">LFO Depth</div><input id="lfoDepth" type="range" min="0" max="100" value="0"><div class="ctl-value" id="lfoDepthValue"></div></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /part synth -->
+
+<!-- ── PART: FX ── -->
+<div class="part-panel" data-part="fx">
+
+  <!-- Humanize card -->
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">Humanize <span style="font-size:8px;color:var(--txt-2);letter-spacing:1px;">PERFORMANCE</span></span>
+      <div class="card-actions">
+        <button id="humanizeEnableBtn" class="btn btn-grn">ON</button>
+        <button id="humanizeClearBtn" class="btn">CLR</button>
+      </div>
+    </div>
+    <div class="card-body">
+      <!-- Preset row -->
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+        <span style="font-size:8px;letter-spacing:2px;color:var(--txt-2);white-space:nowrap;">PRESET</span>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;">
+          <button class="btn human-preset-btn" data-preset="off">OFF</button>
+          <button class="btn human-preset-btn" data-preset="tight">TIGHT</button>
+          <button class="btn human-preset-btn btn-grn" data-preset="natural">NATURAL</button>
+          <button class="btn human-preset-btn" data-preset="loose">LOOSE</button>
+          <button class="btn human-preset-btn" data-preset="lazy">LAZY</button>
+          <button class="btn human-preset-btn" data-preset="jazz">JAZZ</button>
+        </div>
+      </div>
+      <!-- Randomize sliders -->
+      <div style="font-size:8px;letter-spacing:2px;color:var(--txt-2);margin-bottom:5px;">RANDOMIZE</div>
+      <div class="cg cg-4" style="margin-bottom:8px;">
+        <div class="ctl">
+          <div class="ctl-label">Timing</div>
+          <input id="humanizeTiming" type="range" min="0" max="30" step="1" value="8">
+          <div class="ctl-value" id="humanizeTimingVal">8ms</div>
+        </div>
+        <div class="ctl">
+          <div class="ctl-label">Velocity</div>
+          <input id="humanizeVelocity" type="range" min="0" max="0.30" step="0.01" value="0.10">
+          <div class="ctl-value" id="humanizeVelocityVal">10%</div>
+        </div>
+        <div class="ctl">
+          <div class="ctl-label">Pitch</div>
+          <input id="humanizePitch" type="range" min="0" max="20" step="1" value="3">
+          <div class="ctl-value" id="humanizePitchVal">3¢</div>
+        </div>
+        <div class="ctl">
+          <div class="ctl-label">Swing</div>
+          <input id="humanizeSwing" type="range" min="0.50" max="0.75" step="0.01" value="0.50">
+          <div class="ctl-value" id="humanizeSwingVal">STR</div>
+        </div>
+      </div>
+      <!-- Drift sliders -->
+      <div style="font-size:8px;letter-spacing:2px;color:var(--txt-2);margin-bottom:5px;padding-top:6px;border-top:1px solid var(--bd-1);">DRIFT <span style="color:var(--txt-2);font-size:7px;letter-spacing:1px;">— slow organic movement</span></div>
+      <div class="cg cg-4" style="margin-bottom:6px;">
+        <div class="ctl">
+          <div class="ctl-label">Groove</div>
+          <input id="driftGroove" type="range" min="0" max="120" step="2" value="0">
+          <div class="ctl-value" id="driftGrooveVal">OFF</div>
+        </div>
+        <div class="ctl">
+          <div class="ctl-label">Pitch</div>
+          <input id="driftPitch" type="range" min="0" max="80" step="2" value="0">
+          <div class="ctl-value" id="driftPitchVal">OFF</div>
+        </div>
+        <div class="ctl">
+          <div class="ctl-label">Loop</div>
+          <input id="driftLoop" type="range" min="0" max="120" step="2" value="0">
+          <div class="ctl-value" id="driftLoopVal">OFF</div>
+        </div>
+        <div class="ctl">
+          <div class="ctl-label">Velocity</div>
+          <input id="driftVelocity" type="range" min="0" max="0.60" step="0.02" value="0">
+          <div class="ctl-value" id="driftVelocityVal">OFF</div>
+        </div>
+      </div>
+      <div class="cg cg-4">
+        <div class="ctl">
+          <div class="ctl-label">Drift Speed</div>
+          <input id="driftSpeed" type="range" min="0.02" max="2.0" step="0.02" value="0.30">
+          <div class="ctl-value" id="driftSpeedVal">MED</div>
+        </div>
+        <div class="ctl">
+          <div class="ctl-label">Correlation</div>
+          <input id="driftCorrelation" type="range" min="0" max="1" step="1" value="1">
+          <div class="ctl-value" id="driftCorrelationVal">LINKED</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lo-Fi card -->
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">Lo-Fi Character</span>
+      <div class="card-actions">
+        <button id="lofiMotionBtn" class="btn">MOTION</button>
+        <button id="loficlearBtn" class="btn">CLR</button>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="cg cg-3">
+        <div class="ctl"><div class="ctl-label">Bit Crush</div><input id="bitDepth" type="range" min="2" max="16" value="16"><div class="ctl-value" id="bitDepthValue"></div></div>
+        <div class="ctl"><div class="ctl-label">Smp Rate</div><input id="sampleRate" type="range" min="0.02" max="1" step="0.01" value="1"><div class="ctl-value" id="sampleRateValue"></div></div>
+        <div class="ctl"><div class="ctl-label">Jitter</div><input id="jitter" type="range" min="0" max="30" value="0"><div class="ctl-value" id="jitterValue"></div></div>
+        <div class="ctl"><div class="ctl-label">Clock Drift</div><input id="drift" type="range" min="0" max="30" value="0"><div class="ctl-value" id="driftValue"></div></div>
+        <div class="ctl"><div class="ctl-label">Batt Weak</div><input id="battery" type="range" min="0" max="100" value="0"><div class="ctl-value" id="batteryValue"></div></div>
+        <div class="ctl"><div class="ctl-label">Noise Flr</div><input id="noise" type="range" min="0" max="100" value="0"><div class="ctl-value" id="noiseValue"></div></div>
+      </div>
+      <!-- Lo-Fi Motion strip (visible always, active when MOTION is ON) -->
+      <div id="lofiMotionStrip" style="margin-top:8px;padding-top:7px;border-top:1px solid var(--bd-1);">
+        <div style="font-size:8px;letter-spacing:2px;color:var(--txt-2);margin-bottom:5px;">MOTION <span style="font-size:7px;letter-spacing:1px;color:var(--txt-2);">— organic lo-fi evolution</span></div>
+        <div class="cg cg-4">
+          <div class="ctl">
+            <div class="ctl-label">Depth</div>
+            <input id="lofiMotionDepth" type="range" min="0" max="1" step="0.02" value="0.0">
+            <div class="ctl-value" id="lofiMotionDepthVal">OFF</div>
+          </div>
+          <div class="ctl">
+            <div class="ctl-label">Speed</div>
+            <input id="lofiMotionSpeed" type="range" min="0.02" max="2.0" step="0.02" value="0.20">
+            <div class="ctl-value" id="lofiMotionSpeedVal">~60s</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chorus card -->
+  <div class="card">
+    <div class="card-head"><span class="card-title">Chorus / Ensemble</span></div>
+    <div class="card-body">
+      <div class="cg cg-2">
+        <div class="ctl"><div class="ctl-label">Rate</div><input id="chorusRate" type="range" min="0.1" max="10" step="0.1" value="0.1"><div class="ctl-value" id="chorusRateValue"></div></div>
+        <div class="ctl"><div class="ctl-label">Depth</div><input id="chorusDepth" type="range" min="0" max="0.03" step="0.001" value="0"><div class="ctl-value" id="chorusDepthValue"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Space Echo card -->
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">Space Echo</span>
+      <div class="card-actions"><button id="echoclearBtn" class="btn">CLR</button></div>
+    </div>
+    <div class="card-body">
+      <div class="cg cg-3" style="margin-bottom:6px;">
+        <div class="ctl" style="grid-column:span 1;">
+          <div class="ctl-label">Tape Mode</div>
+          <select id="delayMode">
+            <option value="single">SINGLE HEAD</option>
+            <option value="double">DOUBLE HEAD</option>
+            <option value="triple">TRIPLE HEAD</option>
+            <option value="slap">SLAPBACK</option>
+          </select>
+        </div>
+        <div class="ctl"><div class="ctl-label">Echo Time</div><input id="delayTime" type="range" min="0.02" max="1.0" step="0.001" value="0.02"><div class="ctl-value" id="delayTimeValue"></div></div>
+        <div class="ctl"><div class="ctl-label">Intensity</div><input id="delayFeedback" type="range" min="0" max="0.92" step="0.01" value="0"><div class="ctl-value" id="delayFeedbackValue"></div></div>
+        <div class="ctl"><div class="ctl-label">Bass EQ</div><input id="delayBass" type="range" min="-12" max="6" step="0.5" value="0"><div class="ctl-value" id="delayBassValue"></div></div>
+        <div class="ctl"><div class="ctl-label">Treble EQ</div><input id="delayTreble" type="range" min="-12" max="6" step="0.5" value="0"><div class="ctl-value" id="delayTrebleValue"></div></div>
+        <div class="ctl"><div class="ctl-label">Wow/Flutter</div><input id="delayWow" type="range" min="0" max="1" step="0.01" value="0"><div class="ctl-value" id="delayWowValue"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mixer card -->
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">Mixer</span>
+    </div>
+    <div class="card-body">
+
+      <!-- Master volume -->
+      <div style="margin-bottom:10px;">
+        <div class="ctl">
+          <div class="ctl-label">Master Vol</div>
+          <input type="range" id="masterVolSlider" min="0" max="1" step="0.01" value="0.8">
+          <div class="ctl-value" id="masterVolVal">80%</div>
+        </div>
+      </div>
+
+      <!-- Channel strips grid: label col + 4 channels -->
+      <div style="display:grid;grid-template-columns:52px repeat(4,1fr);gap:4px;">
+
+        <!-- Header row -->
+        <div></div>
+        <div style="font-size:8px;letter-spacing:1.5px;color:var(--txt-2);text-align:center;padding-bottom:2px;">KEYS</div>
+        <div style="font-size:8px;letter-spacing:1.5px;color:var(--txt-2);text-align:center;padding-bottom:2px;">SEQ-A</div>
+        <div style="font-size:8px;letter-spacing:1.5px;color:var(--txt-2);text-align:center;padding-bottom:2px;">DRONE</div>
+        <div style="font-size:8px;letter-spacing:1.5px;color:var(--txt-2);text-align:center;padding-bottom:2px;">RHYTHM</div>
+
+        <!-- VOL row -->
+        <div style="font-size:8px;letter-spacing:1.5px;color:var(--txt-2);display:flex;align-items:center;">VOL</div>
+        <div class="ctl">
+          <input type="range" id="keyboardVolSlider" min="0" max="1" step="0.01" value="0.8">
+          <div class="ctl-value" id="keyboardVolVal">80%</div>
+        </div>
+        <div class="ctl">
+          <input type="range" id="seqMixVolSlider" min="0" max="1" step="0.01" value="0.8">
+          <div class="ctl-value" id="seqMixVolVal">80%</div>
+        </div>
+        <div class="ctl">
+          <input type="range" id="droneVolSlider" min="0" max="1" step="0.01" value="0.5">
+          <div class="ctl-value" id="droneVolVal">50%</div>
+        </div>
+        <div class="ctl">
+          <input type="range" id="rhythmMixVolSlider" min="0" max="1" step="0.01" value="0.7">
+          <div class="ctl-value" id="rhythmMixVolVal">70%</div>
+        </div>
+
+        <!-- CHORUS row -->
+        <div style="font-size:8px;letter-spacing:1.5px;color:var(--txt-2);display:flex;align-items:center;">CHORUS</div>
+        <div class="ctl">
+          <input type="range" id="keysChorusSend" min="0" max="1" step="0.01" value="0">
+          <div class="ctl-value" id="keysChorusSendVal">0%</div>
+        </div>
+        <div class="ctl">
+          <input type="range" id="seqChorusSend" min="0" max="1" step="0.01" value="0">
+          <div class="ctl-value" id="seqChorusSendVal">0%</div>
+        </div>
+        <div class="ctl">
+          <input type="range" id="droneChorusSend" min="0" max="1" step="0.01" value="0">
+          <div class="ctl-value" id="droneChorusSendVal">0%</div>
+        </div>
+        <div class="ctl">
+          <input type="range" id="rhythmChorusSend" min="0" max="1" step="0.01" value="0">
+          <div class="ctl-value" id="rhythmChorusSendVal">0%</div>
+        </div>
+
+        <!-- ECHO row -->
+        <div style="font-size:8px;letter-spacing:1.5px;color:var(--txt-2);display:flex;align-items:center;">ECHO</div>
+        <div class="ctl">
+          <input type="range" id="keysEchoSend" min="0" max="1" step="0.01" value="0">
+          <div class="ctl-value" id="keysEchoSendVal">0%</div>
+        </div>
+        <div class="ctl">
+          <input type="range" id="seqEchoSend" min="0" max="1" step="0.01" value="0">
+          <div class="ctl-value" id="seqEchoSendVal">0%</div>
+        </div>
+        <div class="ctl">
+          <input type="range" id="droneEchoSend" min="0" max="1" step="0.01" value="0">
+          <div class="ctl-value" id="droneEchoSendVal">0%</div>
+        </div>
+        <div class="ctl">
+          <input type="range" id="rhythmEchoSend" min="0" max="1" step="0.01" value="0">
+          <div class="ctl-value" id="rhythmEchoSendVal">0%</div>
+        </div>
+
+        <!-- MUTE row -->
+        <div style="font-size:8px;letter-spacing:1.5px;color:var(--txt-2);display:flex;align-items:center;padding-top:4px;border-top:1px solid var(--bd-1);">MUTE</div>
+        <div style="padding-top:4px;border-top:1px solid var(--bd-1);">
+          <!-- Keys: MUTEなし (ライブ演奏用) -->
+        </div>
+        <div style="padding-top:4px;border-top:1px solid var(--bd-1);">
+          <button id="seqMuteBtn" class="btn" style="width:100%;font-size:8px;">SEQ-A</button>
+        </div>
+        <div style="padding-top:4px;border-top:1px solid var(--bd-1);">
+          <button id="slowSeqMuteBtn" class="btn" style="width:100%;font-size:8px;">DRONE</button>
+        </div>
+        <div style="padding-top:4px;border-top:1px solid var(--bd-1);">
+          <button id="rhythmMuteBtn" class="btn" style="width:100%;font-size:8px;">RHYTHM</button>
+        </div>
+
+      </div><!-- /channel strips grid -->
+    </div>
+  </div>
+
+
+</div><!-- /part fx -->
+
+</div><!-- /col left -->
+
+<!-- ────────────────────────────────────────
+     RIGHT COLUMN  /  PRESET + RHYTHM + SEQ + KEYS
+──────────────────────────────────────────── -->
+<div class="col" id="colRight">
+
+<!-- ── PART: RHYTHM ── -->
+<div class="part-panel" data-part="rhythm">
+
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">Rhythm Machine</span>
+      <div class="card-actions">
+        <button id="rhythmRandomBtn" class="btn btn-red">RANDOM</button>
+        <button id="rhythmAutoBtn" class="btn">AUTO</button>
+        <button id="polyrhythmBtn" class="btn">POLY</button>
+        <button id="rhythmClearBtn" class="btn">CLR</button>
+      </div>
+    </div>
+    <!-- Auto-randomize loop bar (hidden by default) -->
+    <div id="rhythmAutoBar" style="display:none;align-items:center;gap:8px;padding:6px 12px;background:var(--bg-0);border-bottom:1px solid var(--bd-1);">
+      <span style="font-size:8px;letter-spacing:2px;color:var(--txt-2);white-space:nowrap;">EVERY</span>
+      <input type="range" id="autoLoopSlider" min="1" max="30" step="1" value="8"
+        style="flex:1;height:3px;cursor:pointer;">
+      <span style="font-size:9px;color:#5df0c8;letter-spacing:1px;min-width:52px;text-shadow:0 0 5px rgba(93,240,200,0.4);" id="autoLoopVal">8 LOOPS</span>
+      <span style="font-size:8px;letter-spacing:1.5px;color:var(--txt-2);">NEXT IN</span>
+      <span style="font-size:9px;color:var(--sig-amb);letter-spacing:1px;min-width:38px;text-align:right;" id="autoLoopCountdown">—</span>
+    </div>
+    <div class="card-body">
+      <!-- Controls row -->
+      <div class="rhythm-ctrl-row" style="grid-template-columns:1fr 1fr 1fr auto;">
+        <div class="ctl">
+          <div class="ctl-label">Pattern</div>
+          <select id="rhythmPattern">
+            <option value="rock1">ROCK 1</option>
+            <option value="rock2">ROCK 2</option>
+            <option value="disco">DISCO</option>
+            <option value="soul">SOUL</option>
+            <option value="swing">SWING</option>
+            <option value="bossaNova">BOSSA NOVA</option>
+            <option value="samba">SAMBA</option>
+            <option value="beguine">BEGUINE</option>
+            <option value="waltz">WALTZ</option>
+            <option value="march">MARCH</option>
+            <option value="pops">POPS</option>
+            <option value="reggae">REGGAE</option>
+            <option value="custom">-- CUSTOM --</option>
+          </select>
+        </div>
+        <div class="ctl">
+          <div class="ctl-label">Drum Kit</div>
+          <select id="drumKit">
+            <option value="standard">STANDARD</option>
+            <option value="vintage">VINTAGE</option>
+            <option value="electronic">ELECTRONIC</option>
+            <option value="jazz">JAZZ</option>
+            <option value="latin">LATIN</option>
+            <optgroup label="── VINTAGE MACHINES ──">
+              <option value="cr78">CR-78</option>
+              <option value="lm1">LM-1</option>
+            </optgroup>
+          </select>
+        </div>
+        <div class="ctl">
+          <div class="ctl-label">Tempo</div>
+          <input id="rhythmBpm" type="range" min="40" max="240" value="120">
+          <div class="ctl-value" id="rhythmBpmValue">120 BPM</div>
+        </div>
+        <button id="rhythmStartBtn" class="btn btn-grn btn-lg">START</button>
+      </div>
+      <!-- Drum tracks -->
+      <div class="rhythm-tracks" id="rhythmTracks"></div>
+    </div>
+  </div>
+
+</div><!-- /part rhythm -->
+
+<!-- ── PART: SEQ ── -->
+<div class="part-panel" data-part="seq">
+
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">Sequencer</span>
+      <div class="card-actions">
+        <button id="seqRandomBtn" class="btn btn-red">RANDOM</button>
+        <button id="seqClearBtn" class="btn">CLR</button>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="seq-ctrl-row" style="grid-template-columns:repeat(3,1fr);">
+        <!-- Tone -->
+        <div class="ctl seq-ctl-fixed">
+          <div class="ctl-label">Tone</div>
+          <select id="seqTone">
+            <option value="__current__">-- CURRENT --</option>
+            <optgroup label="── PIANO ──">
+              <option value="elecPiano">ELEC PIANO</option>
+            
+            <option value="mtPiano">MT-PIANO</option>
+          </optgroup>
+            <optgroup label="── ORGAN ──">
+              <option value="pipeOrgan">PIPE ORGAN</option>
+            
+            <option value="mtOrgan">MT-ORGAN</option>
+          </optgroup>
+            <optgroup label="── STRINGS ──">
+              <option value="strings2">STRINGS 2</option>
+              <option value="violin">VIOLIN</option>
+            
+            <option value="mtStrings">MT-STRINGS</option>
+            <option value="mtViolin">MT-VIOLIN</option>
+          </optgroup>
+            <optgroup label="── BRASS ──">
+              <option value="trumpet">TRUMPET</option>
+              <option value="brass">BRASS ENS</option>
+            
+            <option value="mtBrass">MT-BRASS</option>
+            <option value="mtTrumpet">MT-TRUMPET</option>
+          </optgroup>
+            <optgroup label="── WOODWIND ──">
+              <option value="clarinet">CLARINET</option>
+              <option value="saxophone">SAXOPHONE</option>
+            
+            <option value="mtFlute">MT-FLUTE</option>
+            <option value="mtHarmonica">MT-HARMONICA</option>
+          </optgroup>
+            <optgroup label="── MALLET ──">
+              <option value="bell">BELL</option>
+            
+            <option value="mtMarimba">MT-MARIMBA</option>
+            <option value="mtVibraphone">MT-VIBRAPHONE</option>
+            <option value="mtXylophone">MT-XYLOPHONE</option>
+            <option value="mtBanjo">MT-BANJO</option>
+          </optgroup>
+            <optgroup label="── SYNTH ──">
+              <option value="synthLead">SYNTH LEAD</option>
+              <option value="synthPad">SYNTH PAD</option>
+              <option value="synthBass">SYNTH BASS</option>
+            </optgroup>
+            <optgroup label="── GUITAR ──">
+            <option value="mtGuitar">MT-GUITAR</option>
+            <option value="mtBass">MT-BASS</option>
+          </optgroup>
+          <optgroup label="── LO-FI ──">
+              <option value="vhsPad">VHS PAD</option>
+              <option value="brokenCassette">BROKEN CASS</option>
+              <option value="gameboyLead">GAMEBOY</option>
+              <option value="hauntedToy">HAUNTED TOY</option>
+            
+            <option value="mtHarpsichord">MT-HARPSICHORD</option>
+            <option value="mtChoirPad">MT-CHOIR PAD</option>
+            <option value="mtFantasia">MT-FANTASIA</option>
+          </optgroup>
+            <optgroup label="── DRONE ──">
+              <option value="tibetanBowl">TIBETAN BOWL</option>
+              <option value="tanpura">TANPURA</option>
+              <option value="shimmerDrone">SHIMMER DRONE</option>
+              <option value="subOctave">SUB OCTAVE</option>
+              <option value="organPoint">ORGAN POINT</option>
+            </optgroup>
+            <optgroup label="── NATURE ──">
+              <option value="ocean">OCEAN</option>
+              <option value="rain">RAIN</option>
+              <option value="stream">STREAM</option>
+              <option value="birds">BIRDS</option>
+              <option value="insects">INSECTS</option>
+            </optgroup>
+
+            <optgroup label="── USER ──" id="seqUserGroup"></optgroup>
+          </select>
+        </div>
+        <!-- Octave -->
+        <div class="ctl seq-ctl-fixed">
+          <div class="ctl-label">Octave</div>
+          <div class="seq-oct-row">
+            <button class="seq-oct-btn" id="seqOctDn">−</button>
+            <span id="seqOctDisplay">OCT: 4</span>
+            <button class="seq-oct-btn" id="seqOctUp">＋</button>
+          </div>
+        </div>
+        <!-- Scale -->
+        <div class="ctl seq-ctl-fixed">
+          <div class="ctl-label">Scale</div>
+          <select id="seqScale">
+            <optgroup label="── DIATONIC ──">
+              <option value="major" selected>MAJOR</option>
+              <option value="minor">MINOR</option>
+              <option value="dorian">DORIAN</option>
+              <option value="phrygian">PHRYGIAN</option>
+              <option value="lydian">LYDIAN</option>
+              <option value="mixolydian">MIXOLYDIAN</option>
+              <option value="locrian">LOCRIAN</option>
+            </optgroup>
+            <optgroup label="── MELODIC MINOR ──">
+              <option value="melodicMinor">MELODIC MINOR</option>
+              <option value="dorianSharp4">DORIAN #4</option>
+              <option value="phrygianDominant">PHRYGIAN DOM</option>
+              <option value="lydianAugmented">LYDIAN AUG</option>
+              <option value="lydianDominant">LYDIAN DOM</option>
+              <option value="superLocrian">SUPER LOCRIAN</option>
+            </optgroup>
+            <optgroup label="── HARMONIC ──">
+              <option value="harmonicMinor">HARMONIC MINOR</option>
+              <option value="harmonicMajor">HARMONIC MAJOR</option>
+            </optgroup>
+            <optgroup label="── PENTATONIC / BLUES ──">
+              <option value="pentatonic">MAJOR PENTA</option>
+              <option value="minorPentatonic">MINOR PENTA</option>
+              <option value="blues">BLUES</option>
+            </optgroup>
+            <optgroup label="── SYMMETRIC ──">
+              <option value="wholeTone">WHOLE TONE</option>
+              <option value="halfWholeDim">HALF-WHOLE DIM</option>
+              <option value="wholeHalfDim">WHOLE-HALF DIM</option>
+            </optgroup>
+            <optgroup label="── WORLD ──">
+              <option value="bhairav">BHAIRAV</option>
+              <option value="hungarianMinor">HUNGARIAN MIN</option>
+              <option value="eightToneSpanish">8-TONE SPANISH</option>
+              <option value="pelogSelisir">PELOG-SELISIR</option>
+              <option value="pelogTembung">PELOG-TEMBUNG</option>
+            </optgroup>
+            <optgroup label="── OTHER ──">
+              <option value="chromatic">CHROMATIC</option>
+            </optgroup>
+          </select>
+        </div>
+      </div>
+      <!-- Note grid -->
+      <div class="seq-note-grid" id="seqNoteRow"></div>
+    </div>
+  </div>
+
+</div><!-- /part seq -->
+
+<!-- ── PART: SEQ-B (Slow Drone Sequencer) ── -->
+<div class="part-panel" data-part="seqb">
+
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">Slow Drone Sequencer <span style="font-size:8px;color:var(--txt-2);letter-spacing:1px;">×16 STEPS</span></span>
+      <div class="card-actions">
+        <button id="slowSeqRandomBtn" class="btn btn-red">RANDOM</button>
+        <button id="slowSeqClearBtn" class="btn">CLR</button>
+      </div>
+    </div>
+    <div class="card-body">
+      <!-- Controls -->
+      <div class="seq-ctrl-row" style="grid-template-columns:repeat(3,1fr);">
+        <!-- Tone -->
+        <div class="ctl seq-ctl-fixed">
+          <div class="ctl-label">Tone</div>
+          <select id="slowSeqTone">
+            <option value="__current__">-- CURRENT --</option>
+            <optgroup label="── PIANO ──">
+              <option value="elecPiano">ELEC PIANO</option>
+            
+            <option value="mtPiano">MT-PIANO</option>
+          </optgroup>
+            <optgroup label="── ORGAN ──">
+              <option value="pipeOrgan">PIPE ORGAN</option>
+            
+            <option value="mtOrgan">MT-ORGAN</option>
+          </optgroup>
+            <optgroup label="── STRINGS ──">
+              <option value="strings2">STRINGS 2</option>
+              <option value="violin">VIOLIN</option>
+            
+            <option value="mtStrings">MT-STRINGS</option>
+            <option value="mtViolin">MT-VIOLIN</option>
+          </optgroup>
+            <optgroup label="── BRASS ──">
+              <option value="trumpet">TRUMPET</option>
+              <option value="brass">BRASS ENS</option>
+            
+            <option value="mtBrass">MT-BRASS</option>
+            <option value="mtTrumpet">MT-TRUMPET</option>
+          </optgroup>
+            <optgroup label="── WOODWIND ──">
+              <option value="clarinet">CLARINET</option>
+              <option value="saxophone">SAXOPHONE</option>
+            
+            <option value="mtFlute">MT-FLUTE</option>
+            <option value="mtHarmonica">MT-HARMONICA</option>
+          </optgroup>
+            <optgroup label="── MALLET ──">
+              <option value="bell">BELL</option>
+            
+            <option value="mtMarimba">MT-MARIMBA</option>
+            <option value="mtVibraphone">MT-VIBRAPHONE</option>
+            <option value="mtXylophone">MT-XYLOPHONE</option>
+            <option value="mtBanjo">MT-BANJO</option>
+          </optgroup>
+            <optgroup label="── SYNTH ──">
+              <option value="synthLead">SYNTH LEAD</option>
+              <option value="synthPad">SYNTH PAD</option>
+              <option value="synthBass">SYNTH BASS</option>
+            </optgroup>
+            <optgroup label="── GUITAR ──">
+            <option value="mtGuitar">MT-GUITAR</option>
+            <option value="mtBass">MT-BASS</option>
+          </optgroup>
+          <optgroup label="── LO-FI ──">
+              <option value="vhsPad">VHS PAD</option>
+              <option value="brokenCassette">BROKEN CASS</option>
+              <option value="gameboyLead">GAMEBOY</option>
+              <option value="hauntedToy">HAUNTED TOY</option>
+            
+            <option value="mtHarpsichord">MT-HARPSICHORD</option>
+            <option value="mtChoirPad">MT-CHOIR PAD</option>
+            <option value="mtFantasia">MT-FANTASIA</option>
+          </optgroup>
+            <optgroup label="── DRONE ──">
+              <option value="tibetanBowl">TIBETAN BOWL</option>
+              <option value="tanpura">TANPURA</option>
+              <option value="shimmerDrone">SHIMMER DRONE</option>
+              <option value="subOctave">SUB OCTAVE</option>
+              <option value="organPoint">ORGAN POINT</option>
+            </optgroup>
+            <optgroup label="── NATURE ──">
+              <option value="ocean">OCEAN</option>
+              <option value="rain">RAIN</option>
+              <option value="stream">STREAM</option>
+              <option value="birds">BIRDS</option>
+              <option value="insects">INSECTS</option>
+            </optgroup>
+
+            <optgroup label="── USER ──" id="slowSeqUserGroup"></optgroup>
+          </select>
+        </div>
+        <!-- Octave -->
+        <div class="ctl seq-ctl-fixed">
+          <div class="ctl-label">Octave</div>
+          <div class="seq-oct-row">
+            <button class="seq-oct-btn" id="slowSeqOctDn">−</button>
+            <span id="slowSeqOctDisplay">OCT: 3</span>
+            <button class="seq-oct-btn" id="slowSeqOctUp">＋</button>
+          </div>
+        </div>
+        <!-- Scale (shared) -->
+        <div class="ctl seq-ctl-fixed">
+          <div class="ctl-label">Scale <span style="font-size:8px;color:var(--txt-2);">SEQ-A共有</span></div>
+          <div style="font-size:9px;color:var(--lcd-txt);padding-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="slowSeqScaleDisplay">MAJOR</div>
+        </div>
+      </div>
+      <!-- Step grid -->
+      <div class="seq-note-grid" id="slowSeqNoteRow"></div>
+    </div>
+  </div>
+
+</div><!-- /part seqb -->
+
+<!-- ── PART: KEYS ── -->
+<div class="part-panel" data-part="keys">
+
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">Keyboard</span>
+      <div class="card-actions">
+        <button id="snapScaleBtn" class="btn">SNAP OFF</button>
+        <div class="octave-ctrl">
+          <button class="octave-btn" id="octDn">−</button>
+          <span id="octaveDisplay">OCT: 0</span>
+          <button class="octave-btn" id="octUp">＋</button>
+        </div>
+        <span class="keyboard-hint">Z–/ lower &nbsp;|&nbsp; Q–] upper</span>
+      </div>
+    </div>
+    <div class="card-body" style="padding:8px 10px 6px;">
+      <div class="keyboard-wrap">
+        <div class="keyboard" id="keyboard"></div>
+        <div class="keyboard-base"></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /part keys -->
+
+</div><!-- /col right -->
+
+<!-- ── Mobile tab panels wrapper ── -->
+</div><!-- /workspace -->
+
+<footer style="
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 0 20px;
+  height: 22px;
+  background: var(--bg-root);
+  border-top: 1px solid var(--bd-1);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 8px;
+  letter-spacing: 1.5px;
+  color: var(--txt-2);
+  user-select: none;
+">
+  <a href="#" id="manualLink" style="color:var(--txt-2);text-decoration:none;letter-spacing:1.5px;opacity:0.7;">MANUAL</a>
+  <span style="opacity:0.4;">·</span>
+  <span>© 2026 egoaid</span>
+</footer>
+
+
+<script src="js/01-audio-engine.js"></script>
+<script src="js/02-humanize-drift-lofi.js"></script>
+<script src="js/03-synth-keyboard.js"></script>
+<script src="js/04-rhythm-machine.js"></script>
+<script src="js/05-user-presets.js"></script>
+<script src="js/06-sequencer-a.js"></script>
+<script src="js/07-sequencer-b.js"></script>
+<script src="js/09-humanize-ui.js"></script>
+<script src="js/10-lofi-motion-ui-init.js"></script>
+<script src="js/11-mixer-listeners.js"></script>
+<script src="js/12-oscilloscope.js"></script>
+<script src="js/13-led-blink.js"></script>
+<script src="js/14-panel-visibility.js"></script>
+<script src="js/15-wav-recording.js"></script>
+<script src="js/16a-racing-core.js"></script>
+<script src="js/16b-racing-loop.js"></script>
+<script src="js/16c-racing-car3d.js"></script>
+<script src="js/16d-racing-hud-controls.js"></script>
+<script src="js/16e-racing-engine-sound.js"></script>
+<script src="js/17-auto-drone-engine.js"></script>
+<script src="js/18-manual.js"></script>
+<script>
+// ── PWA service worker registration ──
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js').catch(() => {
+      // registration failures (e.g. file:// or unsupported browser) are non-fatal
+    });
+  });
+}
+</script>
+</body>
+</html>
