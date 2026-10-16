@@ -1,2 +1,4 @@
 User-agent: *
 Allow: /
+
+Sitemap: https://egoaid.github.io/METRO-HIGHWAY/sitemap.xml

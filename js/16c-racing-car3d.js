@@ -657,24 +657,6 @@ function drawCar3D(g, Xw, Yw, Zw, cxAccPx, bodyCol, glowCol,
   }
 
   _drawGlow(g, pts, glowCol || bodyCol);
-
-  // 排気炎（プレーヤー高速時）
-  if (isPlayer && typeof player !== 'undefined' && player.speed > 120) {
-    const fa  = Math.min(0.55, (player.speed - 120) * 0.005);
-    const brl = pts.BRL, brr = pts.BRR;
-    if (brl && brr && !brl.clip && !brr.clip) {
-      const w2 = brr.sx - brl.sx;
-      g.shadowColor = 'rgba(255,100,20,0.8)'; g.shadowBlur = 8;
-      g.fillStyle   = `rgba(255,120,20,${fa})`;
-      [-0.28, 0.28].forEach(ox => {
-        const ex = brl.sx + w2 * (0.5 + ox * 0.5);
-        g.beginPath();
-        g.ellipse(ex, brl.sy + w2 * 0.10, w2 * 0.04, w2 * 0.13, 0, 0, Math.PI * 2);
-        g.fill();
-      });
-      g.shadowBlur = 0;
-    }
-  }
 }
 
 // ════════════════════════════════════════════════

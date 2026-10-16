@@ -7,7 +7,7 @@
 // never block the app if offline.
 // ════════════════════════════════════════════════
 
-const CACHE_VERSION = 'metro-highway-v1.0.2';
+const CACHE_VERSION = 'metro-highway-v1.1.0';
 const CACHE_NAME = `metro-highway-cache-${CACHE_VERSION}`;
 
 const APP_SHELL = [
@@ -35,8 +35,12 @@ const APP_SHELL = [
   './js/16c-racing-car3d.js',
   './js/16d-racing-hud-controls.js',
   './js/16e-racing-engine-sound.js',
+  './js/16f-racing-roadside.js',
+  './js/16g-racing-touch.js',
   './js/17-auto-drone-engine.js',
   './js/18-manual.js',
+  './js/19-app-update.js',
+  './js/20-wake-lock.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-192.png',
@@ -47,7 +51,9 @@ const APP_SHELL = [
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(APP_SHELL))
+      // cache:'reload' = bypass the browser's HTTP cache, so a new version really precaches the
+      // new files (GitHub Pages serves assets with max-age=600; plain addAll could store stale copies).
+      .then(cache => cache.addAll(APP_SHELL.map(url => new Request(url, { cache: 'reload' }))))
       .then(() => self.skipWaiting())
   );
 });
@@ -69,6 +75,10 @@ self.addEventListener('fetch', event => {
 
   // Only handle GET requests; let everything else pass straight through.
   if (req.method !== 'GET') return;
+
+  // version.json is how the page learns that a newer version exists, so it must
+  // always come from the network — never from the cache. (Not handled here = browser fetches it.)
+  if (new URL(req.url).pathname.endsWith('/version.json')) return;
 
   event.respondWith(
     caches.match(req).then(cached => {

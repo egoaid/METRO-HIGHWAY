@@ -8,13 +8,15 @@
 <meta name="keywords" content="drone synthesizer, web audio synth, browser synth, ambient music generator, step sequencer, rhythm machine, lo-fi synth, retro racing game, PWA music app">
 <meta name="author" content="egoaid">
 <meta name="robots" content="index, follow">
+<link rel="canonical" href="https://egoaid.github.io/METRO-HIGHWAY/">
 <meta name="theme-color" content="#141518">
 
 <!-- Open Graph -->
 <meta property="og:type" content="website">
+<meta property="og:url" content="https://egoaid.github.io/METRO-HIGHWAY/">
 <meta property="og:title" content="Metro Highway — Cyberpunk Drone Synth & Racing Machine">
 <meta property="og:description" content="A free browser-based ambient drone synthesizer, rhythm machine, and step sequencer with an embedded low-poly cyberpunk racing game. Installable as an offline-capable PWA.">
-<meta property="og:image" content="icons/og-image.png">
+<meta property="og:image" content="https://egoaid.github.io/METRO-HIGHWAY/icons/og-image.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:site_name" content="Metro Highway">
@@ -25,7 +27,7 @@
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Metro Highway — Cyberpunk Drone Synth & Racing Machine">
 <meta name="twitter:description" content="A free browser-based ambient drone synthesizer, rhythm machine, and step sequencer with an embedded low-poly cyberpunk racing game.">
-<meta name="twitter:image" content="icons/og-image.png">
+<meta name="twitter:image" content="https://egoaid.github.io/METRO-HIGHWAY/icons/og-image.png">
 
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/favicon.ico" sizes="any">
@@ -40,6 +42,7 @@
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   "name": "Metro Highway",
+  "url": "https://egoaid.github.io/METRO-HIGHWAY/",
   "applicationCategory": "MultimediaApplication",
   "operatingSystem": "Any (runs in a web browser)",
   "description": "A free browser-based ambient drone synthesizer, rhythm machine and step sequencer with an embedded low-poly cyberpunk racing game. Installable as a PWA and works fully offline.",
@@ -63,7 +66,7 @@
     <span class="brand-sub">DRONE MACHINE</span>
     <div style="display:flex;align-items:baseline;gap:7px;line-height:1;">
       <span class="brand-name">METRO HIGHWAY</span>
-      <span style="font-size:8px;letter-spacing:2px;color:var(--txt-2);padding-bottom:2px;">v1.0.2</span>
+      <span data-app-version style="font-size:8px;letter-spacing:2px;color:var(--txt-2);padding-bottom:2px;">v1.1.0</span>
     </div>
   </div>
   <div class="header-dots">
@@ -1090,8 +1093,12 @@
 <script src="js/16c-racing-car3d.js"></script>
 <script src="js/16d-racing-hud-controls.js"></script>
 <script src="js/16e-racing-engine-sound.js"></script>
+<script src="js/16f-racing-roadside.js"></script>
+<script src="js/16g-racing-touch.js"></script>
 <script src="js/17-auto-drone-engine.js"></script>
 <script src="js/18-manual.js"></script>
+<script src="js/19-app-update.js"></script>
+<script src="js/20-wake-lock.js"></script>
 <script>
 // ── PWA service worker registration ──
 if ('serviceWorker' in navigator) {

@@ -1,6 +1,7 @@
 function frame(t){
   if(!enabled)return;
   rafId=requestAnimationFrame(frame);
+  if(typeof Roadside==='undefined')return; // 16f がまだ読み込み中の間は描かない
   if(t-lastT<33)return;
   const dt=Math.min((t-lastT)/1000,0.08);
   lastT=t;
@@ -24,10 +25,11 @@ function frame(t){
     // STEER_RATE=0.35/sec @ 最高速 → 最高速で端まで約2.6秒。
     const STEER_RATE = 0.35;
     const sr = player.speed / SPD_MAX;
+    // steerInput: キーボードは ±1、ジョイスティックは -1〜+1 のアナログ値
     let steerInput = 0;
     if(player.speed > 5){
-      if(keys.L){ player.x -= STEER_RATE * sr * dt; steerInput = -1; }
-      if(keys.R){ player.x += STEER_RATE * sr * dt; steerInput =  1; }
+      steerInput = Math.max(-1, Math.min(1, (keys.R?1:0) - (keys.L?1:0) + keys.ax));
+      player.x += STEER_RATE * sr * dt * steerInput;
     }
 
     // ── カーブによる横ドリフト ──
@@ -287,6 +289,8 @@ function drawScene(t,bpm){
     slices.unshift({n,seg,p,idx,cxA:fwdCxA[n],stripe});
   }
 
+  const _lights=Roadside.collectLights();   // ヘッドライト光源（自車＋交通車）
+  const _pools=[];                          // 路面の灯り（全セグメント描画後にまとめて描く）
   for(let i=0;i<slices.length-1;i++){
     const far=slices[i],near=slices[i+1];
     if(!far.p||!near.p)continue;
@@ -314,69 +318,10 @@ function drawScene(t,bpm){
       const bx=fc+b.side*margin;
 
       if(b.type==='tree'){
-        // ── 木: 接地影 + 先細りの幹 + 樹種ごとのキャノピー ──
-        const tw=bwpx,th=bhpx;
-        const trunkH=th*0.22;
-        const trunkTopW=tw*0.14, trunkBotW=tw*0.22;
-        const lean=b.lean*th*0.35;
-
-        // 接地影（低ポリでも木が地面に立っている感を出す）
-        const shR=Math.max(2,tw*0.62);
-        const shGrad=g.createRadialGradient(bx,fy,0,bx,fy,shR);
-        shGrad.addColorStop(0,'rgba(0,0,0,0.40)');
-        shGrad.addColorStop(1,'rgba(0,0,0,0)');
-        g.fillStyle=shGrad;
-        g.beginPath();g.ellipse(bx,fy,shR,Math.max(1,shR*0.32),0,0,Math.PI*2);g.fill();
-
-        g.fillStyle='#1a3016';
-        g.beginPath();
-        g.moveTo(bx-trunkBotW/2, fy);
-        g.lineTo(bx+trunkBotW/2, fy);
-        g.lineTo(bx+trunkTopW/2+lean*0.3, fy-trunkH);
-        g.lineTo(bx-trunkTopW/2+lean*0.3, fy-trunkH);
-        g.closePath();g.fill();
-
-        const canopyTopY=fy-th;
-        const canopyBottomY=fy-trunkH*0.55;
-        const canopySpan=canopyBottomY-canopyTopY;
-
-        g.shadowColor='#2af080';g.shadowBlur=Math.min(3,sc*600);
-
-        if(b.treeType==='round'){
-          // ── 広葉樹: 重なり合う丸みのある房（不揃いな円の集合）──
-          const blobs=[
-            {cx:0,      cy:0.32, r:0.62},
-            {cx:-0.34,  cy:0.10, r:0.46},
-            {cx:0.32,   cy:0.06, r:0.48},
-            {cx:0,      cy:-0.30,r:0.40},
-          ];
-          blobs.forEach((bl,i)=>{
-            const jit=b.jitter[i%b.jitter.length];
-            const cx2=bx+lean*0.5+(bl.cx+jit*0.5)*tw;
-            const cy2=canopyBottomY-canopySpan*(0.5+bl.cy+jit*0.15);
-            const r=Math.max(1,(bl.r+jit*0.12)*tw*0.62);
-            g.fillStyle = i%2===0 ? b.leafA : b.leafB;
-            g.beginPath();g.arc(cx2,cy2,r,0,Math.PI*2);g.fill();
-          });
-        } else {
-          // ── 針葉樹: 3層の重なるキャノピー（各層に僅かな不揃いさ）──
-          for(let L=0; L<3; L++){
-            const jit=b.jitter[L];
-            const frac0=L/3, frac1=(L+0.62)/3;
-            const baseY=canopyBottomY-canopySpan*frac0*0.86;
-            const tipY =canopyBottomY-canopySpan*frac1*(1.02+jit*0.1);
-            const width=tw*(1.08-L*0.26)*(1+jit*0.16);
-            const cx=bx+lean*frac0+jit*tw*0.12;
-            g.fillStyle = L===2 ? b.leafB : b.leafA;
-            g.beginPath();
-            g.moveTo(cx, tipY);
-            g.lineTo(cx-width*0.5, baseY);
-            g.lineTo(cx+width*0.5, baseY);
-            g.closePath();
-            g.fill();
-          }
-        }
-        g.shadowBlur=0;
+        // ── 街路樹: 形状は Roadside.drawTree。ヘッドライトの当たり具合 L(0〜1) で明暗が変わる ──
+        const zs=CAM_D/sc;
+        Roadside.drawTree(g,b,bx,fy,bwpx,bhpx,sc,
+          Roadside.lightAt(_lights,b.side*(ROADW+b.ww*0.5),zs));
       } else {
         // ── ビル: シルエット + セットバック + 窓グリッド + 屋上アンテナ ──
         const bgr=g.createLinearGradient(bx-bwpx,fy-bhpx,bx+bwpx,fy);
@@ -451,6 +396,15 @@ function drawScene(t,bpm){
       }
     });
 
+    // ── 街灯・信号機（道路の手前側セグメントより先に描く）──
+    const _rso=roadsideBySeg[far.idx];
+    if(_rso)_rso.forEach(o=>{
+      if(o.kind==='lamp'){
+        Roadside.drawLamp(g,o,fc,fy,fw,sc);
+        _pools.push({o,fc,fy,fw,sc});
+      }else Roadside.drawSignal(g,o,fc,fy,fw,sc,t);
+    });
+
     // ── 道路 ──
     const roadC=alt
       ?(tr==='rural'?'#0a1808':'#050e1a')
@@ -490,8 +444,13 @@ function drawScene(t,bpm){
       g.beginPath();g.moveTo(fc-fw*0.44,fy);g.lineTo(nc-nw*0.44,ny);g.stroke();
       g.beginPath();g.moveTo(fc+fw*0.44,fy);g.lineTo(nc+nw*0.44,ny);g.stroke();
     }
+    // 横断歩道（信号機のあるセグメント）
+    if(far.seg.xing)Roadside.drawCrosswalk(g,fc,fy,fw,nc,ny,nw);
 
   }
+
+  // 街灯が路面に落とす灯り（遠→近の順）
+  _pools.forEach(q=>Roadside.drawPool(g,q));
 
   // ── 交通車両 後処理パス (遠→近ソート済み) ──
   // 全セグメント描画後にまとめて描く（道路による上書き防止）。

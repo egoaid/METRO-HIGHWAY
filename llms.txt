@@ -2,6 +2,8 @@
 
 > Metro Highway is a free, browser-based ambient drone synthesizer, rhythm machine and step sequencer with an embedded low-poly cyberpunk racing game. It runs entirely in the browser (Web Audio API), needs no account or installation, works offline as a Progressive Web App, and sends no data anywhere.
 
+Official URL: https://egoaid.github.io/METRO-HIGHWAY/
+
 ## What it does
 - Subtractive synth engine with presets (pianos, organs, strings, brass, woodwinds, mallets, synths, guitars, lo-fi textures, drones, nature sounds) and user-saved presets
 - Humanize and Drift (organic timing, velocity and pitch variation), Lo-Fi character with Motion, stereo chorus, multi-head tape-style echo
@@ -14,4 +16,6 @@
 - Platform: any modern browser with Web Audio support (Chrome, Edge, Firefox, Safari; desktop and mobile)
 - Install: "Install" / "Add to Home Screen" in the browser (PWA); offline after first load
 - Privacy: audio is generated locally; presets are stored in the browser's local storage only
+- Mobile: fullscreen racing with a single virtual joystick; the screen stays awake while the app is open (Screen Wake Lock)
+- Updates: the app checks for a newer version and offers a one-tap update (clears its cache and reloads)
 - Manual: footer "MANUAL" link inside the app (English and Japanese)

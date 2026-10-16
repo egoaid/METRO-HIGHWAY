@@ -8,9 +8,12 @@ const g = cv && cv.getContext('2d');
 
 // ── サイズ ──
 let W=0,H=0;
+// タッチ端末（スマホ/タブレット）か。フルスクリーン時の操作UIと描画解像度の上限に使う。
+const IS_TOUCH_DEVICE=!!(window.matchMedia&&window.matchMedia('(pointer: coarse)').matches);
 function resize(){
   const r=cv.parentElement.getBoundingClientRect();
-  const d=Math.min(window.devicePixelRatio||1,2);
+  // スマホのフルスクリーンは画素数が大きくなるので上限を1.5にして描画負荷を抑える
+  const d=Math.min(window.devicePixelRatio||1,IS_TOUCH_DEVICE?1.5:2);
   W=Math.round(r.width*d);H=Math.round(r.height*d);
   // wkhtmltoimage fallback: getBoundingClientRect returns 0 before layout
   if(W<10||H<10){
@@ -61,7 +64,8 @@ const SLIP_KICK=2.6;     // 衝突直後のヨー角速度(rad/s)。最大ヨー
 const SLIDE_KICK=0.9;    // 衝突直後の横速度。指数減衰の積分で合計 SLIDE_KICK/SLIDE_DECAY ≒ 0.15 だけ流れる
 const SLIDE_DECAY=6;     // 横速度の減衰率(1/s)
 const SLIDE_LIMIT=0.90;  // スリップで路肩ペナルティ域(>0.90)へ押し出さない上限
-const keys={L:false,R:false,U:false,D:false};
+// ax: アナログ操舵 -1(左)〜+1(右)。バーチャルジョイスティック(16g)が書き込む。キーボードは L/R を使う。
+const keys={L:false,R:false,U:false,D:false,ax:0};
 
 // 道路中心線のスクリーンオフセット(px) — drawScene で毎フレーム更新
 // player.x は道路中心相対座標(-1〜1)なので、
@@ -87,6 +91,9 @@ window.addEventListener('keyup',e=>{
 // ════════════════════════════════════
 // terrain: 'city'|'suburb'|'rural'
 let course=[];
+// 路側物（街灯・信号機）: course から決定的に導出する（buildCourse() の末尾で再構築）
+let roadside=[];           // 全ての路側物
+let roadsideBySeg={};      // segIdx → [路側物]
 function buildCourse(){
   course=[];
   // terrain ブロック定義
@@ -109,6 +116,31 @@ function buildCourse(){
   sc(0,20,0);sc(20,28,0.40);sc(48,18,0);sc(66,32,-0.48);
   sc(98,22,0);sc(120,30,0.42);sc(150,20,0);sc(170,28,-0.38);
   sc(198,18,0);sc(216,24,0.50);
+  buildRoadside();
+}
+
+// ── 路側物（一般道路: 街灯と、時々信号機）──
+// ルール（すべて terrain と seg 番号だけで決まる。乱数なし）:
+//  ・街灯 : 市街/郊外は12セグごと、田舎は24セグごとに、左右交互（反対側は半周期ずらし）
+//  ・信号 : 市街/郊外の「前後4セグがすべて直線」の地点に、前の信号から40セグ以上離して置く
+//           （カーブ区間だと建物に隠れて見えないため）。置いたセグと次のセグに横断歩道を描く
+//  ・信号の位相は seg 番号から決める（信号ごとに赤/青のタイミングがずれる）
+function buildRoadside(){
+  roadside=[]; roadsideBySeg={};
+  const add=o=>{ roadside.push(o); (roadsideBySeg[o.segIdx]=roadsideBySeg[o.segIdx]||[]).push(o); };
+  const straight=i=>{ for(let k=-4;k<=4;k++) if(course[i+k].curve!==0) return false; return true; };
+  let lastSig=-1e9;
+  for(let i=0;i<SEG;i++){
+    const rural=course[i].terrain==='rural';
+    const sp=rural?24:12;
+    if(i%sp===0)        add({kind:'lamp',segIdx:i,side:-1,h:2500,arm:1100});
+    if(i%sp===sp/2)     add({kind:'lamp',segIdx:i,side: 1,h:2500,arm:1100});
+    if(!rural && i>=4 && i<SEG-4 && i-lastSig>=40 && straight(i)){
+      add({kind:'signal',segIdx:i,side:1,phase:(i*7)%12});
+      course[i].xing=true; course[i+1].xing=true;
+      lastSig=i;
+    }
+  }
 }
 buildCourse();
 
@@ -180,8 +212,53 @@ function spawnCar(){
 // 環境オブジェクト
 // ════════════════════════════════════
 let envObjs=[];
-// 木の葉色パレット（層ごとに変化をつけて奥行きを出す）
-const LEAF_COLORS=['#0f6b2c','#1a8c3a','#0a5522','#227a3f','#144a24'];
+// ── 街路樹 ──
+// 夜の道路に合わせて暗く、緑を抑えた配色。ヘッドライトに照らされると lit 色へ寄る
+// （lit = a*1.6 + [34,44,20] を描画時に計算）。値は RGB(0-255)。
+const TREE_PALETTES=[
+  {a:[16,46,30], b:[10,32,22]},
+  {a:[20,52,32], b:[12,38,26]},
+  {a:[14,40,34], b:[ 9,28,26]},
+  {a:[26,54,30], b:[16,40,24]},
+];
+// 樹形（街路樹の実在樹種を単純化した3種）。ww/wh はワールド単位(1m≒347)の [min,max]
+//  broad : ケヤキ/プラタナス型（太い幹が分岐して横に広い樹冠）
+//  column: イチョウ/ポプラ型（細長く先が尖る樹冠）
+//  dome  : クスノキ型（低めで丸いドーム状の樹冠）
+// crownH: 全高のうち樹冠が占める割合（残りは枝下の幹）。lobes: 樹冠の外周のこぶの数
+const TREE_SHAPES={
+  broad :{ww:[1100,1700],wh:[2000,3200],crownH:0.60,rx:0.50,lobes:9},
+  column:{ww:[ 550, 850],wh:[2300,3600],crownH:0.78,rx:0.50,lobes:7,pointed:true},
+  dome  :{ww:[1000,1500],wh:[1500,2400],crownH:0.66,rx:0.50,lobes:8},
+};
+function makeTree(shapeName){
+  const S=TREE_SHAPES[shapeName], R=Math.random;
+  const pal=TREE_PALETTES[Math.floor(R()*TREE_PALETTES.length)];
+  const n=S.lobes*2;
+  // 樹冠外周: 偶数=こぶの頂点, 奇数=くびれ。下半分のくびれは深くして枝下に隙間を作る
+  const crown=[];
+  for(let k=0;k<n;k++){
+    const ang=-Math.PI/2+k*2*Math.PI/n, below=Math.sin(ang)>0.35;
+    crown.push(k%2===0 ? 0.94+R()*0.12 : (0.80+R()*0.10)*(below?0.86:1));
+  }
+  // 葉むら（樹冠内の明暗パッチ）: 楕円内の単位座標
+  // クリップなしで描くので、外周のくびれ(最小≈0.69)より内側に収まる範囲に限る
+  // （中心からの距離 ≤0.50、半径 ≤0.19、下半分は v を縮めて枝下の隙間に食い込ませない）
+  const patches=Array.from({length:7},(_,i)=>{
+    const a=R()*Math.PI*2, d=Math.sqrt(R())*0.50;
+    let v=Math.sin(a)*d; if(v>0) v*=0.75;
+    return {u:Math.cos(a)*d, v, r:0.12+R()*0.07, lite:i%2===1};
+  });
+  // 枝: 幹の先端から樹冠下部へ（樹冠の半幅に対する左右位置）
+  const branches=[-0.42+R()*0.12, (R()-0.5)*0.16, 0.30+R()*0.12];
+  return {
+    shape:shapeName,
+    ww:S.ww[0]+R()*(S.ww[1]-S.ww[0]),
+    wh:S.wh[0]+R()*(S.wh[1]-S.wh[0]),
+    palA:pal.a, palB:pal.b, crown, patches, branches,
+    lean:(R()-0.5)*0.10,
+  };
+}
 
 function buildEnv(){
   envObjs=[];
@@ -189,33 +266,36 @@ function buildEnv(){
     if(Math.random()<0.60){
       const seg=course[i]||{terrain:'city'};
       const isRural=seg.terrain==='rural';
+      const side=Math.random()<0.5?-1:1;
+      if(isRural){
+        // 街路樹（樹形3種を 広葉:円柱:ドーム = 45:30:25 で混ぜる）
+        const r=Math.random();
+        const t=makeTree(r<0.45?'broad':r<0.75?'column':'dome');
+        t.segIdx=i; t.side=side; t.type='tree';
+        envObjs.push(t);
+        continue;
+      }
       const winCols=2+Math.floor(Math.random()*4);
       const floors=2+Math.floor(Math.random()*10);
       // 窓の点灯パターンはビルごとに一度だけ確定（毎フレーム再抽選するとチカチカする）
-      const winLit=isRural?null:Array.from({length:winCols*floors},()=>Math.random()<0.34);
+      const winLit=Array.from({length:winCols*floors},()=>Math.random()<0.34);
       envObjs.push({
         segIdx:i,
-        side:Math.random()<0.5?-1:1,
-        type:isRural?'tree':'building',
+        side,
+        type:'building',
         // ワールド単位でサイズ指定(ROADW基準)
-        ww: isRural?(300+Math.random()*400):(600+Math.random()*1200),
-        wh: isRural?(500+Math.random()*800):(2000+Math.random()*6000),
+        ww: 600+Math.random()*1200,
+        wh: 2000+Math.random()*6000,
         c1:NEON[Math.floor(Math.random()*NEON.length)],
         c2:NEON[Math.floor(Math.random()*NEON.length)],
         fl:floors,
         winCols,
         winLit,
         // ビル: スカイライン変化用のセットバック（上段の後退したブロック）とアンテナ
-        setback: !isRural && Math.random()<0.32,
+        setback: Math.random()<0.32,
         setbackW: 0.48+Math.random()*0.22,
         setbackH: 0.16+Math.random()*0.16,
-        antenna: !isRural && Math.random()<0.35,
-        // 木: 樹種・配色・不揃いさ（自然な見た目のばらつき）
-        treeType: Math.random()<0.62 ? 'conifer' : 'round',
-        leafA: LEAF_COLORS[Math.floor(Math.random()*LEAF_COLORS.length)],
-        leafB: LEAF_COLORS[Math.floor(Math.random()*LEAF_COLORS.length)],
-        lean: (Math.random()-0.5)*0.16,
-        jitter: [ (Math.random()-0.5)*0.3, (Math.random()-0.5)*0.3, (Math.random()-0.5)*0.3 ],
+        antenna: Math.random()<0.35,
       });
     }
   }

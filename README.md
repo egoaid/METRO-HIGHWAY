@@ -1,3 +1,7 @@
+![Metro Highway](icons/og-image.png)
+
+**▶ Play it here: [https://egoaid.github.io/METRO-HIGHWAY/](https://egoaid.github.io/METRO-HIGHWAY/)**
+
 # Metro Highway
 
 **Metro Highway** is a free, browser-based ambient drone synthesizer, rhythm
@@ -30,7 +34,10 @@ and nothing you make is sent anywhere.
   everything and fades between songs.
 - **Recording** — capture what you hear as a 16-bit stereo WAV file.
 - **VFD Racing** — a low-poly, display-styled driving game that also runs
-  as a tempo-synced visual when you're not playing it.
+  as a tempo-synced visual when you're not playing it. Street trees that
+  catch the headlights, street lamps, and the occasional traffic signal.
+  On a phone it plays fullscreen with a single virtual joystick, and Auto
+  Drone starts along with the game.
 
 Open **MANUAL** in the footer for a full walkthrough, in English and
 Japanese. It opens as a popup and does not interrupt playback.
@@ -40,6 +47,10 @@ Japanese. It opens as a popup and does not interrupt playback.
 Metro Highway is a Progressive Web App. Most browsers offer **Install** or
 **Add to Home Screen** for the page; once installed it opens in its own
 window and works offline.
+
+When a newer version is published, an **update banner** appears; tap it and
+the app clears its own cache and reloads. On phones the screen is kept awake
+while the app is open (Screen Wake Lock, where the browser supports it).
 
 ## Browser support
 

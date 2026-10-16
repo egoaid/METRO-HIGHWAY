@@ -38,7 +38,14 @@ function drawDemoOverlay(g){
   g.font=`${Math.round(H*0.036)}px 'Share Tech Mono',monospace`;
   g.textAlign='center';g.fillStyle='rgba(93,240,200,0.50)';
   g.shadowColor='#5df0c8';g.shadowBlur=5;
-  g.fillText('SPACE / PLAY TO START',W*0.5,H*0.25);
+  // タッチ端末: フルスクリーン中は画面タップで開始、埋め込み表示中は PLAY ボタンで開始
+  const fsOn=!!(window.VfdFullscreen&&VfdFullscreen.isActive());
+  g.fillText(IS_TOUCH_DEVICE?(fsOn?'TAP TO START':'PLAY TO START'):'SPACE / PLAY TO START',W*0.5,H*0.25);
+  if(IS_TOUCH_DEVICE&&fsOn&&H>W){
+    g.font=`${Math.round(W*0.034)}px 'Share Tech Mono',monospace`;
+    g.fillStyle='rgba(93,240,200,0.38)';
+    g.fillText('ROTATE TO LANDSCAPE FOR BEST VIEW',W*0.5,H*0.25+Math.round(W*0.06));
+  }
   g.shadowBlur=0;g.textAlign='left';
 }
 function drawGameOver(){
@@ -62,7 +69,7 @@ function drawLogs(g){
     l.age++;
     const fi=Math.min(1,l.age/8),fo=Math.max(0,1-Math.max(0,l.age-l.life*0.7)/(l.life*0.3));
     g.fillStyle=i===0?`rgba(93,240,200,${fi*fo*0.92})`:`rgba(93,240,200,${fi*fo*0.35})`;
-    g.shadowColor=i===0?'rgba(93,240,200,0.5)':'none';g.shadowBlur=i===0?4:0;
+    g.shadowColor=i===0?'rgba(93,240,200,0.5)':'transparent';g.shadowBlur=i===0?4:0;
     g.fillText('> '+l.text,W*0.03,y0+lh*(i+1));
   });
   logs.splice(0,logs.length,...logs.filter(l=>l.age<l.life));
@@ -117,40 +124,77 @@ if(gb){gb.addEventListener('click',()=>{
   if(mode===MODE.PLAY||mode===MODE.OVER){
     mode=MODE.DEMO;player.speed=0;player.x=0;player.xv=0;player.bank=0;traffic=[];
     gb.textContent='PLAY';gb.classList.add('btn-red');gb.classList.remove('btn');
-  }else{startGame();}
+  }else if(IS_TOUCH_DEVICE&&window.VfdTouch){VfdTouch.startMobilePlay();}  // スマホ: フルスクリーン + 開始 + Auto Drone
+  else{startGame();}
 });}
 
-// ── フルスクリーンボタン ──
-(function(){
-  const fsBtn  = document.getElementById('vfdFullscreenBtn');
+// ── フルスクリーン ──
+// 実フルスクリーン(Fullscreen API)を優先し、使えない環境（iPhone の Safari は <div> の
+// フルスクリーン非対応）では CSS の擬似フルスクリーン(.vfd-pfs)にフォールバックする。
+// 状態は body.vfd-fs-active と document の 'vfd-fullscreenchange' イベントで他モジュール(16g)へ伝える。
+window.VfdFullscreen=(function(){
+  const fsBtn    = document.getElementById('vfdFullscreenBtn');
   const fsTarget = document.getElementById('vfdGameViewport');
-  if(!fsBtn || !fsTarget) return;
+  if(!fsBtn || !fsTarget) return null;
+  let pseudo=false;
 
-  function isFullscreen(){
+  function isNative(){
     return !!(document.fullscreenElement
            || document.webkitFullscreenElement
            || document.mozFullScreenElement
            || document.msFullscreenElement);
   }
+  function isActive(){ return isNative() || pseudo; }
 
-  function enterFS(){
+  function setPseudo(on){
+    pseudo=on;
+    fsTarget.classList.toggle('vfd-pfs', on);
+    document.documentElement.classList.toggle('vfd-pfs-lock', on);
+    sync();
+  }
+  function lockLandscape(){
+    // Android など対応環境のみ。失敗しても支障なし（iPhone は縦のまま遊べる）
+    if(IS_TOUCH_DEVICE && screen.orientation && screen.orientation.lock){
+      screen.orientation.lock('landscape').catch(()=>{});
+    }
+  }
+  function unlockOrientation(){
+    if(screen.orientation && screen.orientation.unlock){ try{ screen.orientation.unlock(); }catch(_){} }
+  }
+
+  function enter(){
+    if(isActive()) return;
     const req = fsTarget.requestFullscreen
               || fsTarget.webkitRequestFullscreen
               || fsTarget.mozRequestFullScreen
               || fsTarget.msRequestFullscreen;
-    if(req) req.call(fsTarget).catch(()=>{});
+    if(req){
+      try{
+        const r=req.call(fsTarget);
+        if(r && r.catch) r.catch(()=>setPseudo(true));
+      }catch(_){ setPseudo(true); }
+    }else{
+      setPseudo(true);
+    }
+    lockLandscape();
   }
 
-  function exitFS(){
-    const ex = document.exitFullscreen
-             || document.webkitExitFullscreen
-             || document.mozCancelFullScreen
-             || document.msExitFullscreen;
-    if(ex) ex.call(document).catch(()=>{});
+  function exit(){
+    if(pseudo) setPseudo(false);
+    if(isNative()){
+      const ex = document.exitFullscreen
+               || document.webkitExitFullscreen
+               || document.mozCancelFullScreen
+               || document.msExitFullscreen;
+      if(ex) ex.call(document).catch(()=>{});
+    }
+    unlockOrientation();
   }
 
-  function syncBtn(){
-    if(isFullscreen()){
+  let lastActive=false;
+  function sync(){
+    const on=isActive();
+    if(on){
       fsBtn.textContent = '✕';
       fsBtn.title = 'Exit Fullscreen';
       fsBtn.classList.add('btn-amb');
@@ -159,14 +203,24 @@ if(gb){gb.addEventListener('click',()=>{
       fsBtn.title = 'Fullscreen';
       fsBtn.classList.remove('btn-amb');
     }
-    // canvas リサイズを即時トリガー
+    document.body.classList.toggle('vfd-fs-active', on);
+    // canvas リサイズ（レイアウト確定後に再取得）
     setTimeout(resize, 80);
+    setTimeout(resize, 350);
+    if(on!==lastActive){
+      lastActive=on;
+      document.dispatchEvent(new CustomEvent('vfd-fullscreenchange',{detail:{active:on}}));
+    }
   }
 
-  fsBtn.addEventListener('click', ()=>{
-    if(isFullscreen()) exitFS(); else enterFS();
-  });
+  fsBtn.addEventListener('click', ()=>{ if(isActive()) exit(); else enter(); });
 
   ['fullscreenchange','webkitfullscreenchange','mozfullscreenchange','MSFullscreenChange']
-    .forEach(ev => document.addEventListener(ev, syncBtn));
+    .forEach(ev => document.addEventListener(ev, ()=>{
+      if(!isNative() && !pseudo) unlockOrientation();
+      sync();
+    }));
+  window.addEventListener('orientationchange', ()=>{ setTimeout(resize, 250); });
+
+  return { enter, exit, isActive };
 })();
