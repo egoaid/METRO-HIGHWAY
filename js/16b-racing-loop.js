@@ -223,20 +223,39 @@ function frame(t){
 // 描画
 // ════════════════════════════════════
 function drawScene(t,bpm){
-  const HY=Math.round(H*0.42);
-  // afterglow
-  g.fillStyle='rgba(0,4,8,0.50)';g.fillRect(0,0,W,H);
+  // シーン（道路・車・街並み）は枠 SH に描き、画面下端へ寄せる（縦長画面対策。16a の SCENE_AR_MAX を参照）。
+  // drawWorld 中だけ H を枠の高さに差し替えるので、投影式(proj/_projWorld など)は H をそのまま使える。
+  const realH=H;
+  g.save();g.translate(0,SY0);H=SH;
+  try{drawWorld(t,bpm);}finally{H=realH;g.restore();}
 
-  // 空
-  const sg=g.createLinearGradient(0,0,0,HY);
+  // 被弾フラッシュ・HUD は実画面の座標で描く
+  if(mode===MODE.PLAY&&game.hitTimer>70){
+    g.fillStyle=`rgba(255,0,0,${(game.hitTimer-70)*0.012})`;g.fillRect(0,0,W,H);
+  }
+  drawHUD(g,bpm);
+  if(mode===MODE.DEMO)drawDemoOverlay(g);
+  if(mode===MODE.PLAY||mode===MODE.OVER)drawGameHUD(g);
+  drawLogs(g);
+}
+
+function drawWorld(t,bpm){
+  // 地平線 = 道路の消失点(proj の H*0.5)。以前は空側だけ H*0.42 で、その差の黒い帯に
+  // 遠景の構造物が乗って「接地面が地平線に固定」されて見えていた。
+  const HY=Math.round(H*0.5);
+  // afterglow（縦長画面の延長した空の部分 -SY0..0 も含めて消す）
+  g.fillStyle='rgba(0,4,8,0.50)';g.fillRect(0,-SY0,W,H+SY0);
+
+  // 空（縦長画面では上へ延長）
+  const sg=g.createLinearGradient(0,-SY0,0,HY);
   sg.addColorStop(0,'#000306');sg.addColorStop(1,'#010b12');
-  g.fillStyle=sg;g.fillRect(0,0,W,HY);
+  g.fillStyle=sg;g.fillRect(0,-SY0,W,HY+SY0);
 
   // 星
   const nt=t*0.001;
   stars.forEach(s=>{
     const bv=0.38+0.62*Math.sin(nt*s.bs+s.b*6.28);
-    g.beginPath();g.arc(s.x*W,s.y*HY,s.r,0,Math.PI*2);
+    g.beginPath();g.arc(s.x*W,s.y*(HY+SY0)-SY0,s.r,0,Math.PI*2);
     g.fillStyle=`rgba(93,240,200,${bv*(1-tunnelA)*0.75})`;g.fill();
   });
 
@@ -271,6 +290,9 @@ function drawScene(t,bpm){
   drawMountains(mountainsFar,  HY, H*0.17, farCurveTotal*0.06, 'rgba(124,108,190,0.55)', 'rgba(70,58,120,0.68)');
   drawMountains(mountainsNear, HY, H*0.24, farCurveTotal*0.13, 'rgba(96,80,168,0.78)',   'rgba(42,34,76,0.90)');
 
+  // 地平線より下の地面（描画距離より奥の部分。何も描かないと afterglow の黒が残る）
+  g.fillStyle='#010609';g.fillRect(0,HY,W,H-HY);
+
   // 地平線グロー（山の稜線に滲むように、山より後に重ねる）
   const hg=g.createLinearGradient(0,HY-4,0,HY+6);
   hg.addColorStop(0,'transparent');
@@ -291,7 +313,10 @@ function drawScene(t,bpm){
 
   const _lights=Roadside.collectLights();   // ヘッドライト光源（自車＋交通車）
   const _pools=[];                          // 路面の灯り（全セグメント描画後にまとめて描く）
-  for(let i=0;i<slices.length-1;i++){
+  // slices[0] が最も近いセグメント（n=0）。ペインターズアルゴリズムのため遠→近へ走査する。
+  // （以前は近→遠で、遠いセグメントの地面の塗りが手前の木・ビル・街灯の下半分を塗りつぶしていた）
+  // 変数名 far/near は歴史的経緯で逆: far=slices[i](手前側の縁 y=fy), near=slices[i+1](奥側の縁 y=ny)。
+  for(let i=slices.length-2;i>=0;i--){
     const far=slices[i],near=slices[i+1];
     if(!far.p||!near.p)continue;
     const fy=far.p.sy,ny=near.p.sy,fc=far.p.cx,nc=near.p.cx,fw=far.p.sw,nw=near.p.sw;
@@ -300,15 +325,62 @@ function drawScene(t,bpm){
     const alt=far.stripe;
     const tr=far.seg.terrain;
 
+    // ── 道路 ──
+    const roadC=alt
+      ?(tr==='rural'?'#0a1808':'#050e1a')
+      :(tr==='rural'?'#0c2010':'#071528');
+    g.fillStyle=roadC;
+    g.beginPath();
+    g.moveTo(fc-fw,fy);g.lineTo(fc+fw,fy);
+    g.lineTo(nc+nw,ny);g.lineTo(nc-nw,ny);
+    g.closePath();g.fill();
+
+    // 路肩
+    g.fillStyle=tr==='rural'?'#122008':'#020508';
+    g.beginPath();g.moveTo(0,fy);g.lineTo(fc-fw,fy);g.lineTo(nc-nw,ny);g.lineTo(0,ny);g.closePath();g.fill();
+    g.beginPath();g.moveTo(W,fy);g.lineTo(fc+fw,fy);g.lineTo(nc+nw,ny);g.lineTo(W,ny);g.closePath();g.fill();
+
+    // 縁石
+    const kf=fw*0.07,kn=nw*0.07;
+    const kc=tr==='rural'?(alt?'#ddd':'#999'):(alt?'#e03060':'#5df0c8');
+    g.fillStyle=kc;
+    g.beginPath();g.moveTo(fc-fw,fy);g.lineTo(fc-fw+kf,fy);g.lineTo(nc-nw+kn,ny);g.lineTo(nc-nw,ny);g.closePath();g.fill();
+    g.beginPath();g.moveTo(fc+fw-kf,fy);g.lineTo(fc+fw,fy);g.lineTo(nc+nw,ny);g.lineTo(nc+nw-kn,ny);g.closePath();g.fill();
+
+    // 路肩白線
+    if(alt){
+      g.strokeStyle='rgba(93,240,200,0.52)';g.lineWidth=Math.max(0.5,fw*0.025);
+      g.beginPath();g.moveTo(fc-fw*0.88,fy);g.lineTo(nc-nw*0.88,ny);g.stroke();
+      g.beginPath();g.moveTo(fc+fw*0.88,fy);g.lineTo(nc+nw*0.88,ny);g.stroke();
+    }
+    // センターライン破線
+    if(!alt){
+      g.strokeStyle='rgba(255,255,200,0.68)';g.lineWidth=Math.max(0.5,nw*0.026);
+      g.beginPath();g.moveTo(fc,fy);g.lineTo(nc,ny);g.stroke();
+    }
+    // レーン分割
+    if(alt){
+      g.strokeStyle='rgba(93,240,200,0.16)';g.lineWidth=Math.max(0.4,nw*0.015);
+      g.beginPath();g.moveTo(fc-fw*0.44,fy);g.lineTo(nc-nw*0.44,ny);g.stroke();
+      g.beginPath();g.moveTo(fc+fw*0.44,fy);g.lineTo(nc+nw*0.44,ny);g.stroke();
+    }
+    // 横断歩道（信号機のあるセグメント）
+    if(far.seg.xing)Roadside.drawCrosswalk(g,fc,fy,fw,nc,ny,nw);
+
+    // ── 地面（道路・路肩）を描いた後に、その上に立つ構造物を描く ──
+    // 構造物の接地点は手前側の縁 fy。上へ伸びて奥のセグメント（描画済み）に重なるのが正しい。
     // ── 環境オブジェクト ──
     envObjs.forEach(b=>{
       if(b.segIdx!==far.idx)return;
       // ピクセルサイズ = ワールドサイズ * scale * 補正
       // ROADW=2000がfw=ROADW*scale*(W/2)に相当
       // → 1ワールド単位 = scale*(W/2)/1 px
+      // 幅は x 倍率(W/2)、高さは y 倍率(H/2)。地面の奥行き(sy)・車(_projWorld)と同じ式にそろえる。
+      // （高さだけ W/2 で描くと、構造物が実際より背高になり、接地点との釣り合いが崩れる）
       const pxPerUnit=sc*(W*0.5);
+      const pyPerUnit=sc*(H*0.5);
       const bwpx=b.ww*pxPerUnit;
-      const bhpx=b.wh*pxPerUnit;
+      const bhpx=b.wh*pyPerUnit;
       // 遠景ほど小さく描画し、カメラが近づくにつれて滑らかに拡大させる
       // （以前は sc<0.0002 で描画距離の手前約2割しか使えておらず、
       //   遠くで小さく現れて徐々に大きくなる遠近感がほぼ無かった）。
@@ -405,48 +477,6 @@ function drawScene(t,bpm){
       }else Roadside.drawSignal(g,o,fc,fy,fw,sc,t);
     });
 
-    // ── 道路 ──
-    const roadC=alt
-      ?(tr==='rural'?'#0a1808':'#050e1a')
-      :(tr==='rural'?'#0c2010':'#071528');
-    g.fillStyle=roadC;
-    g.beginPath();
-    g.moveTo(fc-fw,fy);g.lineTo(fc+fw,fy);
-    g.lineTo(nc+nw,ny);g.lineTo(nc-nw,ny);
-    g.closePath();g.fill();
-
-    // 路肩
-    g.fillStyle=tr==='rural'?'#122008':'#020508';
-    g.beginPath();g.moveTo(0,fy);g.lineTo(fc-fw,fy);g.lineTo(nc-nw,ny);g.lineTo(0,ny);g.closePath();g.fill();
-    g.beginPath();g.moveTo(W,fy);g.lineTo(fc+fw,fy);g.lineTo(nc+nw,ny);g.lineTo(W,ny);g.closePath();g.fill();
-
-    // 縁石
-    const kf=fw*0.07,kn=nw*0.07;
-    const kc=tr==='rural'?(alt?'#ddd':'#999'):(alt?'#e03060':'#5df0c8');
-    g.fillStyle=kc;
-    g.beginPath();g.moveTo(fc-fw,fy);g.lineTo(fc-fw+kf,fy);g.lineTo(nc-nw+kn,ny);g.lineTo(nc-nw,ny);g.closePath();g.fill();
-    g.beginPath();g.moveTo(fc+fw-kf,fy);g.lineTo(fc+fw,fy);g.lineTo(nc+nw,ny);g.lineTo(nc+nw-kn,ny);g.closePath();g.fill();
-
-    // 路肩白線
-    if(alt){
-      g.strokeStyle='rgba(93,240,200,0.52)';g.lineWidth=Math.max(0.5,fw*0.025);
-      g.beginPath();g.moveTo(fc-fw*0.88,fy);g.lineTo(nc-nw*0.88,ny);g.stroke();
-      g.beginPath();g.moveTo(fc+fw*0.88,fy);g.lineTo(nc+nw*0.88,ny);g.stroke();
-    }
-    // センターライン破線
-    if(!alt){
-      g.strokeStyle='rgba(255,255,200,0.68)';g.lineWidth=Math.max(0.5,nw*0.026);
-      g.beginPath();g.moveTo(fc,fy);g.lineTo(nc,ny);g.stroke();
-    }
-    // レーン分割
-    if(alt){
-      g.strokeStyle='rgba(93,240,200,0.16)';g.lineWidth=Math.max(0.4,nw*0.015);
-      g.beginPath();g.moveTo(fc-fw*0.44,fy);g.lineTo(nc-nw*0.44,ny);g.stroke();
-      g.beginPath();g.moveTo(fc+fw*0.44,fy);g.lineTo(nc+nw*0.44,ny);g.stroke();
-    }
-    // 横断歩道（信号機のあるセグメント）
-    if(far.seg.xing)Roadside.drawCrosswalk(g,fc,fy,fw,nc,ny,nw);
-
   }
 
   // 街灯が路面に落とす灯り（遠→近の順）
@@ -496,15 +526,5 @@ function drawScene(t,bpm){
 
   // プレイヤー車
   drawPlayerCar(g,bpm,t);
-
-  // 被弾フラッシュ
-  if(mode===MODE.PLAY&&game.hitTimer>70){
-    g.fillStyle=`rgba(255,0,0,${(game.hitTimer-70)*0.012})`;g.fillRect(0,0,W,H);
-  }
-
-  drawHUD(g,bpm);
-  if(mode===MODE.DEMO)drawDemoOverlay(g);
-  if(mode===MODE.PLAY||mode===MODE.OVER)drawGameHUD(g);
-  drawLogs(g);
 }
 

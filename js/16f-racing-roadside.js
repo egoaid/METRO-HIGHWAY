@@ -184,9 +184,9 @@ window.Roadside = (function(){
   const STEEL = '#262c36';
 
   function drawLamp(g, o, fc, fy, fw, sc){
-    const u = sc*(W*0.5);
+    const u = sc*(W*0.5), uy = sc*(H*0.5);    // 横は W/2、縦は H/2 の倍率（地面・車と同じ）
     const bx = fc + o.side*fw*1.06;           // 縁石のすぐ外側
-    const topY = fy - o.h*u, pw = Math.max(0.9, 34*u);
+    const topY = fy - o.h*uy, pw = Math.max(0.9, 34*u);
     // 支柱（先細り）
     g.fillStyle = STEEL;
     g.beginPath();
@@ -194,12 +194,12 @@ window.Roadside = (function(){
     g.lineTo(bx + pw*0.40, topY); g.lineTo(bx - pw*0.40, topY);
     g.closePath(); g.fill();
     // アーム（道路側へ湾曲）
-    const ax = bx - o.side*o.arm*u, ay = topY - 40*u;
+    const ax = bx - o.side*o.arm*u, ay = topY - 40*uy;
     g.strokeStyle = STEEL; g.lineWidth = Math.max(0.8, 26*u);
     g.beginPath(); g.moveTo(bx, topY);
-    g.quadraticCurveTo(bx - o.side*o.arm*0.3*u, topY - 110*u, ax, ay); g.stroke();
+    g.quadraticCurveTo(bx - o.side*o.arm*0.3*u, topY - 110*uy, ax, ay); g.stroke();
     // 灯具
-    const hw = Math.max(2, 240*u), hh = Math.max(1, 60*u);
+    const hw = Math.max(2, 240*u), hh = Math.max(1, 60*uy);
     g.fillStyle = '#303743'; g.fillRect(ax - hw*0.5, ay - hh*0.5, hw, hh);
     g.fillStyle = '#ffe6b8'; g.fillRect(ax - hw*0.42, ay + hh*0.1, hw*0.84, Math.max(1, hh*0.45));
     // 光暈（加算合成）。近い街灯ほど半径が巨大になり画面全体が白飛びするので上限(px)を設ける
@@ -239,9 +239,9 @@ window.Roadside = (function(){
   }
 
   function drawSignal(g, o, fc, fy, fw, sc, tMs){
-    const u = sc*(W*0.5);
+    const u = sc*(W*0.5), uy = sc*(H*0.5);
     const bx = fc + o.side*fw*1.06;
-    const armY = fy - 2050*u;
+    const armY = fy - 2050*uy;
     const armEnd = fc - o.side*fw*0.30;
     const st = signalState(tMs, o.phase);
     // 支柱
@@ -257,7 +257,7 @@ window.Roadside = (function(){
     // 灯器
     [0.42, -0.18].forEach(rel => {
       const hx = fc + fw*rel*o.side;
-      const hw = 720*u, hh = 250*u;   // 実物より大きめ（遠くからでも信号と分かるように誇張）
+      const hw = 720*u, hh = 250*uy;  // 実物より大きめ（遠くからでも信号と分かるように誇張）
       if(hh >= 2.5){
         g.fillStyle = '#12161c'; g.fillRect(hx - hw/2, armY, hw, hh);
         g.strokeStyle = '#2a303a'; g.lineWidth = Math.max(0.5, 8*u);

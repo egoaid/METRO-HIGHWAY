@@ -1207,16 +1207,6 @@ html.vfd-pfs-lock, html.vfd-pfs-lock body { overflow: hidden; overscroll-behavio
   -webkit-tap-highlight-color: transparent;
 }
 body.vfd-touch.vfd-fs-active #vfdTouchLayer { display: block; }
-.vfd-joy-hint {
-  position: absolute;
-  left: calc(env(safe-area-inset-left, 0px) + 26px);
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 26px);
-  width: 112px; height: 112px; border-radius: 50%;
-  border: 1.5px dashed rgba(93,240,200,0.28);
-  opacity: 0; transition: opacity .3s;
-  pointer-events: none;
-}
-#vfdTouchLayer.is-play .vfd-joy-hint { opacity: 1; }
 .vfd-joy-base {
   position: absolute; display: none;
   width: 112px; height: 112px; margin: -56px 0 0 -56px;

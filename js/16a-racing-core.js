@@ -8,6 +8,14 @@ const g = cv && cv.getContext('2d');
 
 // ── サイズ ──
 let W=0,H=0;
+// ── シーン枠 ──
+// 投影は x を W/2、y を H/2 で拡大する（車・道路・構造物すべて同じ式）。縦長画面では y 倍率が
+// x の2倍以上になり、車が縦に伸びて細長く見えてしまう。そこで、ゲームのシーン（道路・車・街並み）は
+// 高さを W*SCENE_AR_MAX 以下に抑えた枠 SH に描き、画面の下端に寄せる（上端オフセット SY0）。
+// 余った上部は夜空（drawScene 側で空を上へ延長）。HUD・タッチ操作は実画面 (W,H) を使う。
+// 横長〜ほぼ正方形の画面では SH===H, SY0===0 で、従来と同じ。
+const SCENE_AR_MAX=1.25;
+let SH=0,SY0=0;
 // タッチ端末（スマホ/タブレット）か。フルスクリーン時の操作UIと描画解像度の上限に使う。
 const IS_TOUCH_DEVICE=!!(window.matchMedia&&window.matchMedia('(pointer: coarse)').matches);
 function resize(){
@@ -22,6 +30,7 @@ function resize(){
   }
   if(W<10||H<10){W=870;H=220;}
   cv.width=W;cv.height=H;
+  SH=Math.min(H,Math.round(W*SCENE_AR_MAX));SY0=H-SH;
 }
 resize();
 // 再試行: レイアウト完了後にもう一度サイズ取得

@@ -26,7 +26,6 @@ window.VfdTouch = (function(){
   const layer = document.createElement('div');
   layer.id = 'vfdTouchLayer';
   layer.innerHTML =
-    '<div class="vfd-joy-hint"></div>' +
     '<div class="vfd-joy-base"><div class="vfd-joy-knob"></div></div>' +
     '<button type="button" id="vfdTouchExit" class="vfd-touch-btn" aria-label="Exit fullscreen">✕</button>';
   vp.appendChild(layer);
@@ -82,9 +81,6 @@ window.VfdTouch = (function(){
   layer.addEventListener('contextmenu', e=>e.preventDefault());
 
   exitBtn.addEventListener('click', ()=>{ if(window.VfdFullscreen) VfdFullscreen.exit(); });
-
-  // プレイ中だけ、待機位置のヒント（点線の輪）を出す
-  setInterval(()=>{ layer.classList.toggle('is-play', mode === MODE.PLAY); }, 200);
 
   // ── プレイ開始: フルスクリーン → ゲーム開始 → Auto Drone ──
   function startAutoDroneIfIdle(){
