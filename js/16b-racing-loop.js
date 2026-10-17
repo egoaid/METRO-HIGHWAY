@@ -1,7 +1,7 @@
 function frame(t){
   if(!enabled)return;
   rafId=requestAnimationFrame(frame);
-  if(typeof Roadside==='undefined')return; // 16f がまだ読み込み中の間は描かない
+  if(typeof Roadside==='undefined'||typeof Hologram==='undefined'||typeof SpeedFx==='undefined')return; // 16f/16h が読み込み中の間は描かない
   if(t-lastT<33)return;
   const dt=Math.min((t-lastT)/1000,0.08);
   lastT=t;
@@ -84,7 +84,8 @@ function frame(t){
     // 探し、空いている側へ目標位置をずらす。
     let avoidDx = 0, avoidDist = Infinity;
     traffic.forEach(car=>{
-      const fwd = (car.z - cam.pos) / SEGZ;
+      // 自車(PLAYER_Z)の前方の車だけが対象。カメラ基準だと、自車の後ろの車を避けてしまう
+      const fwd = (car.z - cam.pos - PLAYER_Z) / SEGZ;
       if(fwd > 0.3 && fwd < 7 && fwd < avoidDist){
         const dx = car.x - player.x;
         if(Math.abs(dx) < 0.55){ avoidDist = fwd; avoidDx = dx; }
@@ -112,7 +113,8 @@ function frame(t){
     game.overTimer++;
   }
 
-  cam.pos+=player.speed*dt*CAM_SCALE;
+  // 見かけの進行速度（SpeedFx.vis: 120km/h超を1.5倍）。表示速度・走行距離は物理のまま。他車も同じ関数を通す。
+  cam.pos+=SpeedFx.vis(player.speed)*dt*CAM_SCALE;
 
   // ── 衝突スリップ更新（横滑り: ヨーの振れ + 横への流れ。横転はしない）──
   if(player.slip!==0||player.slipV!==0||player.slideV!==0){
@@ -152,7 +154,7 @@ function frame(t){
     //   プレーヤー停止時(player.speed=0):
     //     car.z += car.ownSpd * dt * CAM_SCALE
     //     → relZ が増大 → 車両が前方に走り去る（追い抜かれる）
-    car.z += (car.oncoming ? -1 : 1) * car.ownSpd * dt * CAM_SCALE;
+    car.z += (car.oncoming ? -1 : 1) * SpeedFx.vis(car.ownSpd) * dt * CAM_SCALE;
 
     // viewAngle: 道路中心（=固定カメラの視線方向）から見た車両への角度(rad)。
     // Math.atan2(dx, dz) → 0=真正面、±π/2=真横、±π=真後ろ。
@@ -167,20 +169,28 @@ function frame(t){
     const relZ2 = _relZ;
 
     // ── 消滅判定 ──
-    // 後方消滅: relZ2 < PLAYER_Z * 0.3
-    //   生成位置(PLAYER_Z - SEGZ*2 ≒ 912)より手前で消滅。
-    //   プレーヤーに完全に追い越されてから消える。
-    if(relZ2 < PLAYER_Z * 0.3){
-      if(mode===MODE.PLAY && !car.oncoming){ playPassSound(); addLog('PASS!'); }
-      return false;
-    }
-    // 前方消滅: 速い車が描画限界の外まで離れた
+    // 後方: 追い越されても、画面の下へ完全に出る（前端が下端の外へ出る）まで消さない。
+    //   以前は自車の位置(PLAYER_Z)で描画を打ち切っていたため、車が自車の位置で突然消えていた。
+    // 前方: 速い車が描画限界の外まで離れた
+    const dims = carWorldSize(car.carType);
+    if(relZ2 + dims.len < carCullFrontZ(car.carType)) return false;
     if(relZ2 > DRAW*SEGZ+SEGZ*3) return false;
 
+    // ── 追い越し（PASS!）: 自車の後端より完全に後ろへ下がった時に1回だけ ──
+    if(!car.oncoming){
+      if(!car.passed && relZ2 + dims.len < PLAYER_Z){
+        car.passed = true;
+        if(mode===MODE.PLAY){ playPassSound(); addLog('PASS!'); }
+      } else if(car.passed && relZ2 > PLAYER_Z + PLAYER_LEN){
+        car.passed = false;   // 再び自車の前に出た（また追い越せば PASS!）
+      }
+    }
+
     // ── 衝突判定 ──
+    // 描画と同じ基準（自車の車体と重なったか）。以前はカメラ基準の窓(fwd<3)で、画面の外(自車の後方
+    // 約770ユニット)で見えない所からダメージが入っていた。
     if(mode===MODE.PLAY&&!car.hitTimer&&game.hitTimer===0){
-      const fwd = relZ2/SEGZ;
-      if(fwd >= -0.5 && fwd < 3){
+      if(carTouchesPlayer(relZ2, car.carType)){
         const hitW = car.carType==='truck' ? 0.35 : 0.26;
         if(Math.abs(car.x - player.x) < hitW){
           car.hitTimer=40; takeDamage(Math.sign(player.x - car.x)); // 相手から離れる側へ
@@ -226,7 +236,9 @@ function drawScene(t,bpm){
   // シーン（道路・車・街並み）は枠 SH に描き、画面下端へ寄せる（縦長画面対策。16a の SCENE_AR_MAX を参照）。
   // drawWorld 中だけ H を枠の高さに差し替えるので、投影式(proj/_projWorld など)は H をそのまま使える。
   const realH=H;
-  g.save();g.translate(0,SY0);H=SH;
+  // 高速時は世界だけを縦に微振動させる（HUD は揺らさない）
+  const shk=SpeedFx.shakeY(t,player.speed,Math.max(1,SH/540));
+  g.save();g.translate(0,SY0+shk);H=SH;
   try{drawWorld(t,bpm);}finally{H=realH;g.restore();}
 
   // 被弾フラッシュ・HUD は実画面の座標で描く
@@ -243,19 +255,21 @@ function drawWorld(t,bpm){
   // 地平線 = 道路の消失点(proj の H*0.5)。以前は空側だけ H*0.42 で、その差の黒い帯に
   // 遠景の構造物が乗って「接地面が地平線に固定」されて見えていた。
   const HY=Math.round(H*0.5);
-  // afterglow（縦長画面の延長した空の部分 -SY0..0 も含めて消す）
-  g.fillStyle='rgba(0,4,8,0.50)';g.fillRect(0,-SY0,W,H+SY0);
+  Hologram.update(t);                         // グリッチ/山脈の配色のスケジュール
+  const EXT=SY0+6;                            // 上へ延長する空の高さ（振動の余白 6px を含む）
+  // afterglow（縦長画面の延長した空・手前の路面も含めて消す。高速ほど残像が長い）
+  g.fillStyle=`rgba(0,4,8,${SpeedFx.trailAlpha(player.speed)})`;g.fillRect(0,-EXT,W,HB+EXT+6);
 
   // 空（縦長画面では上へ延長）
-  const sg=g.createLinearGradient(0,-SY0,0,HY);
+  const sg=g.createLinearGradient(0,-EXT,0,HY);
   sg.addColorStop(0,'#000306');sg.addColorStop(1,'#010b12');
-  g.fillStyle=sg;g.fillRect(0,-SY0,W,HY+SY0);
+  g.fillStyle=sg;g.fillRect(0,-EXT,W,HY+EXT);
 
   // 星
   const nt=t*0.001;
   stars.forEach(s=>{
     const bv=0.38+0.62*Math.sin(nt*s.bs+s.b*6.28);
-    g.beginPath();g.arc(s.x*W,s.y*(HY+SY0)-SY0,s.r,0,Math.PI*2);
+    g.beginPath();g.arc(s.x*W,s.y*(HY+EXT)-EXT,s.r,0,Math.PI*2);
     g.fillStyle=`rgba(93,240,200,${bv*(1-tunnelA)*0.75})`;g.fill();
   });
 
@@ -287,11 +301,14 @@ function drawWorld(t,bpm){
   // ごく一部だけをパララックスとして与える（近景ほど大きく揺れると
   // 山が road と一緒に振り回されて見えてしまうため、係数を大きく絞る）。
   const farCurveTotal = fwdCxA[DRAW] || 0;
-  drawMountains(mountainsFar,  HY, H*0.17, farCurveTotal*0.06, 'rgba(124,108,190,0.55)', 'rgba(70,58,120,0.68)');
-  drawMountains(mountainsNear, HY, H*0.24, farCurveTotal*0.13, 'rgba(96,80,168,0.78)',   'rgba(42,34,76,0.90)');
+  // 山脈もホログラム: 配色が時々変わり、グリッチ時はずれ/ちらつきが入る（16h-racing-fx.js）
+  const mf=Hologram.mountainFills(t);
+  Hologram.paint(g,90010,0,HY-H*0.17,W,HY,()=>drawMountains(mountainsFar,  HY, H*0.17, farCurveTotal*0.06, mf.farTop,  mf.farBot));
+  Hologram.paint(g,90011,0,HY-H*0.24,W,HY,()=>drawMountains(mountainsNear, HY, H*0.24, farCurveTotal*0.13, mf.nearTop, mf.nearBot));
+  Hologram.overlay(g,W,-EXT,HY);              // グリッチ時の走査ノイズ（空の部分だけ）
 
   // 地平線より下の地面（描画距離より奥の部分。何も描かないと afterglow の黒が残る）
-  g.fillStyle='#010609';g.fillRect(0,HY,W,H-HY);
+  g.fillStyle='#010609';g.fillRect(0,HY,W,HB-HY+6);
 
   // 地平線グロー（山の稜線に滲むように、山より後に重ねる）
   const hg=g.createLinearGradient(0,HY-4,0,HY+6);
@@ -320,7 +337,7 @@ function drawWorld(t,bpm){
     const far=slices[i],near=slices[i+1];
     if(!far.p||!near.p)continue;
     const fy=far.p.sy,ny=near.p.sy,fc=far.p.cx,nc=near.p.cx,fw=far.p.sw,nw=near.p.sw;
-    if(fy>=H&&ny>=H)continue; // 両方画面外
+    if(fy>=HB+6&&ny>=HB+6)continue; // 両方画面外（描画下端 HB より下）
     const sc=far.p.scale;
     const alt=far.stripe;
     const tr=far.seg.terrain;
@@ -385,17 +402,20 @@ function drawWorld(t,bpm){
       // （以前は sc<0.0002 で描画距離の手前約2割しか使えておらず、
       //   遠くで小さく現れて徐々に大きくなる遠近感がほぼ無かった）。
       if(bwpx<0.5||bhpx<0.5)return;
-      // 道路端の外側に配置
-      const margin=fw+bwpx*0.5+4;
-      const bx=fc+b.side*margin;
+      // 道路端（縁石を含む）の外側に配置。中心は「半幅」ぶん外へ（ビルは bx±bwpx、木は全幅 bwpx の半分）。
+      // 以前は全種類 bwpx*0.5 だったため、ビルが道路側へ半幅ぶん食い込んでいた。
+      const isTree=b.type==='tree';
+      const bx=fc+b.side*roadsideCenterOffset(fw,isTree?bwpx*0.5:bwpx);
+      const hid=b.id||(b.segIdx*2+(b.side>0?1:0));   // グリッチ乱数用の固定ID
 
-      if(b.type==='tree'){
+      if(isTree){
         // ── 街路樹: 形状は Roadside.drawTree。ヘッドライトの当たり具合 L(0〜1) で明暗が変わる ──
         const zs=CAM_D/sc;
-        Roadside.drawTree(g,b,bx,fy,bwpx,bhpx,sc,
-          Roadside.lightAt(_lights,b.side*(ROADW+b.ww*0.5),zs));
+        const L=Roadside.lightAt(_lights,b.side*(ROADW+b.ww*0.5),zs);
+        Hologram.paint(g,hid,bx-bwpx*0.5,fy-bhpx,bx+bwpx*0.5,fy,()=>Roadside.drawTree(g,b,bx,fy,bwpx,bhpx,sc,L));
       } else {
-        // ── ビル: シルエット + セットバック + 窓グリッド + 屋上アンテナ ──
+        // ── ビル: シルエット + セットバック + 窓グリッド + 屋上アンテナ（ホログラム）──
+        Hologram.paint(g,hid,bx-bwpx,fy-bhpx*(1+(b.setback?b.setbackH:0)+(b.antenna?0.18:0)),bx+bwpx,fy,()=>{
         const bgr=g.createLinearGradient(bx-bwpx,fy-bhpx,bx+bwpx,fy);
         bgr.addColorStop(0,hexA(b.c1,Math.min(0.30,sc*200)));
         bgr.addColorStop(1,'rgba(2,6,12,0.97)');
@@ -465,16 +485,21 @@ function drawWorld(t,bpm){
             }
           }
         }
+        });
       }
     });
 
-    // ── 街灯・信号機（道路の手前側セグメントより先に描く）──
+    // ── 街灯・信号機・反射ポスト ──
     const _rso=roadsideBySeg[far.idx];
     if(_rso)_rso.forEach(o=>{
       if(o.kind==='lamp'){
-        Roadside.drawLamp(g,o,fc,fy,fw,sc);
+        // 街灯は道路の外の構造物なのでホログラム扱い（信号機・反射ポストは実体のある路上設備なので対象外）
+        const lu=sc*(H*0.5), lx=fc+o.side*fw*1.06, lax=lx-o.side*o.arm*sc*(W*0.5);
+        Hologram.paint(g,90100+o.segIdx*2+(o.side>0?1:0),Math.min(lx,lax)-3,fy-o.h*lu-60*lu,Math.max(lx,lax)+3,fy,
+          ()=>Roadside.drawLamp(g,o,fc,fy,fw,sc));
         _pools.push({o,fc,fy,fw,sc});
-      }else Roadside.drawSignal(g,o,fc,fy,fw,sc,t);
+      }else if(o.kind==='post') Roadside.drawPost(g,o,fc,fy,fw,sc);
+      else Roadside.drawSignal(g,o,fc,fy,fw,sc,t);
     });
 
   }
@@ -482,49 +507,45 @@ function drawWorld(t,bpm){
   // 街灯が路面に落とす灯り（遠→近の順）
   _pools.forEach(q=>Roadside.drawPool(g,q));
 
-  // ── 交通車両 後処理パス (遠→近ソート済み) ──
+  // ── スピードライン（高速時のみ。消失点から左右へ放射。車より後ろの層）──
+  {
+    const vp=slices[slices.length-1].p;
+    SpeedFx.drawStreaks(g,W,H,vp?vp.cx:W*0.5,HY,t,player.speed);
+  }
+
+  // ── 交通車両 ──
   // 全セグメント描画後にまとめて描く（道路による上書き防止）。
-  //
-  // レンダリング範囲: PLAYER_Z <= relZ <= DRAW*SEGZ
-  //   relZ < PLAYER_Z = プレーヤー後方 → 描画不要
-  //
-  // road と完全に同一の _projWorld()/WORLD_CAR_HALF_W を使うため、
-  // ここでは road 由来のスクリーン座標(p.cx/p.sw)を一切経由しない。
+  // 画面に見えている間は描く（carOffscreen）。追い越された車は自車より下へ下がっても消えず、
+  // 画面の下へ出きってから（更新処理で）取り除かれる。後方から来る車は画面の下の外から現れる。
+  // 自車より手前(relZ<PLAYER_Z)の車は自車の手前にあるので、自車より「後」に描く。
+  // road と完全に同一の _projWorld()/WORLD_CAR_HALF_W を使うため、road 由来のスクリーン座標は経由しない。
   // 渡すのはワールド座標(Xw=car.x*ROADW, Zw=relZ)と curve オフセット(cxAcc)のみ。
   {
     const sliceMap = new Map();
     slices.forEach(s => { sliceMap.set(s.n, s.cxA); });
 
-    // 遠→近ソート
-    const sortedTraffic = traffic.slice().sort((a,b)=>(b.z-a.z));
-
-    sortedTraffic.forEach(car=>{
+    const farList=[], nearList=[];
+    traffic.slice().sort((a,b)=>(b.z-a.z)).forEach(car=>{   // 遠→近
       const relZ = car.z - cam.pos;
-
-      // PLAYER_Z より手前は描画しない（プレーヤー後方 or 落下防止）
-      if(relZ < PLAYER_Z) return;
-      if(relZ > DRAW * SEGZ) return;
-
+      if(relZ > DRAW*SEGZ) return;
+      if(carOffscreen(relZ, car.x*ROADW, car.carType)) return;
+      (relZ < PLAYER_Z ? nearList : farList).push(car);
+    });
+    const drawCars = list => list.forEach(car=>{
+      const relZ = car.z - cam.pos;
       // カーブオフセット取得（slicesから補間）— road と同一のcxAcc
       const nFloat = (relZ - (SEGZ - camFrac)) / SEGZ;
       const nIdx   = Math.max(0, Math.floor(nFloat));
       const cxAcc  = sliceMap.has(nIdx) ? sliceMap.get(nIdx) : 0;
-
       try {
         drawTrafficCar(g, car.x * ROADW, relZ, cxAcc,
           car.col, car.carType, car.heading, false);
       } catch(_) {
-        // 1台の描画で例外が出ても、手前の他の車の描画を巻き添えで
-        // 止めない（このtry/catchが無いと forEach 全体が中断し、
-        // それ以降＝より手前の車が全て未描画のまま＝透明に見える、
-        // という重大な症状を引き起こしていた）。
+        // 1台の描画で例外が出ても、他の車の描画を巻き添えで止めない
       }
     });
+    drawCars(farList);
+    drawPlayerCar(g,bpm,t);
+    drawCars(nearList);
   }
-
-  // トンネル暗転なし
-
-  // プレイヤー車
-  drawPlayerCar(g,bpm,t);
 }
-

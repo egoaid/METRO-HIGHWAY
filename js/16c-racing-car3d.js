@@ -50,8 +50,12 @@ function _mT(tx, ty, tz) {
 //
 // Xw, Yw, Zw はワールド単位（road の ROADW と同じ単位系）。
 // cxAccPx は road のカーブによるスクリーン空間オフセット（proj()のcxAcc）。
+// 近接面: カメラに近すぎる(Zw < CAR_NEAR_Z)点は Z=CAR_NEAR_Z に押さえて投影する（面ごと捨てない）。
+// 追い越された車は、後端がカメラ面に達しても前側が画面の下部にまだ見えているので、
+// 面を捨てると見えている部分が突然消える。押さえた点はどのみち画面のはるか下の外に投影される。
+const CAR_NEAR_Z = 30;
 function _projWorld(Xw, Yw, Zw, cxAccPx) {
-  if (Zw <= 0.5) return null;
+  if (Zw < CAR_NEAR_Z) Zw = CAR_NEAR_Z;
   const s = CAM_D / Zw;
   return {
     sx: (W * 0.5 - (cxAccPx || 0)) + Xw * s * (W * 0.5),
@@ -511,7 +515,7 @@ function _decalsOf(carType) {
 }
 function _drawDecal(g, d, model, cxAccPx) {
   const cam = d.corners.map(c => _m4v(model, c[0], c[1], c[2], 1));
-  if (cam.some(c => c[2] <= 0.5)) return;
+  if (cam.some(c => c[2] < CAR_NEAR_Z)) return;   // 装飾（ライト等）は押さえず、近すぎるなら省く（その時は画面の下の外）
   if (!_isFrontCamN(cam)) return;                 // 見えていない側の面には出さない
   const pts = cam.map(c => { const p = _projWorld(c[0], c[1], c[2], cxAccPx); return { sx: p.sx, sy: p.sy, clip: false }; });
   const st = _DECAL_STYLE[d.kind];
@@ -608,8 +612,7 @@ function drawCar3D(g, Xw, Yw, Zw, cxAccPx, bodyCol, glowCol,
     const v = vObj[k];
     const cam = _m4v(model, v[0], v[1], v[2], 1);
     camPts[k] = cam;
-    if (cam[2] <= 0.5) { pts[k] = { sx: W*0.5, sy: H*0.5, clip: true }; continue; }
-    const p = _projWorld(cam[0], cam[1], cam[2], cxAccPx);
+    const p = _projWorld(cam[0], cam[1], cam[2], cxAccPx);   // 近接点は _projWorld が CAR_NEAR_Z に押さえる
     pts[k] = p ? { sx: p.sx, sy: p.sy, clip: false }
                : { sx: W*0.5, sy: H*0.5, clip: true };
   }
@@ -680,7 +683,7 @@ const TYPE_SCALE = {
 // ════════════════════════════════════════════════
 function drawTrafficCar(g, Xw, Zw, cxAccPx, col, carType, heading, hitFlash) {
   // 距離フェード: 遠いほど薄く、極小なら描画スキップ
-  const s = CAM_D / Zw;
+  const s = CAM_D / Math.max(Zw, 200);   // 距離フェード用（追い越し中の Zw<=0 でも破綻しない）
   const approxHalfPx = WORLD_CAR_HALF_W * (TYPE_SCALE[carType] || 1.0) * s * (W * 0.5);
   const alpha = Math.min(1, Math.max(0.5, approxHalfPx / 3));
   if (alpha < 0.12 || approxHalfPx < 1) return;

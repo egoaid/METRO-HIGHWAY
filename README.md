@@ -36,6 +36,8 @@ and nothing you make is sent anywhere.
 - **VFD Racing** — a low-poly, display-styled driving game that also runs
   as a tempo-synced visual when you're not playing it. Street trees that
   catch the headlights, street lamps, and the occasional traffic signal.
+  The skyline, trees and mountains are holograms that glitch now and then,
+  and the mountains slowly change colour.
   On a phone it plays fullscreen with a single virtual joystick, and Auto
   Drone starts along with the game.
 

@@ -42,7 +42,7 @@ const MANUAL_EN = `
 <p>Press <b>REC</b> to capture what you hear as a 16-bit stereo WAV file; it downloads when you stop.</p>
 
 <h3>VFD Racing</h3>
-<p>A low-poly, display-styled driving game built into the synth. Press <b>PLAY</b> (or Space/Enter), then use the arrow keys: up to accelerate, down to brake, left/right to steer. Avoid traffic and the road edge; you have three hit points. Outside of play it runs as an automatic demo synced to the tempo. The ⛶ button toggles fullscreen. On a phone, <b>PLAY</b> opens fullscreen with a single virtual joystick (touch anywhere and drag: up = accelerate, down = brake, left/right = steer); Auto Drone starts together with the game using its current settings. Tap ✕ at the top to leave. Street trees light up in your headlights, and traffic signals appear now and then.</p>
+<p>A low-poly, display-styled driving game built into the synth. Press <b>PLAY</b> (or Space/Enter), then use the arrow keys: up to accelerate, down to brake, left/right to steer. Avoid traffic and the road edge; you have three hit points. Outside of play it runs as an automatic demo synced to the tempo. The ⛶ button toggles fullscreen. On a phone, <b>PLAY</b> opens fullscreen with a single virtual joystick (touch anywhere and drag: up = accelerate, down = brake, left/right = steer); Auto Drone starts together with the game using its current settings. Tap ✕ at the top to leave. Street trees light up in your headlights, and traffic signals appear now and then. Everything outside the road — buildings, trees, street lamps and the mountains — is a hologram: it glitches every so often and the mountains change colour. Text on screen cannot be selected, so a long press never gets in the way.</p>
 
 <h3>Install as an app</h3>
 <p>Most browsers offer “Install” or “Add to Home Screen” for this page. Once installed it opens in its own window and works offline. When a newer version is published, an update banner appears — tap <b>UPDATE</b> and the app clears its cache and reloads. On phones the screen stays awake while the app is open.</p>
@@ -86,7 +86,7 @@ const MANUAL_JA = `
 <p><b>REC</b>を押すと聴こえている音を16bitステレオWAVで録音し、停止するとダウンロードされます。</p>
 
 <h3>VFD Racing（ミニゲーム）</h3>
-<p>シンセに内蔵された、ローポリの表示器風ドライビングゲームです。<b>PLAY</b>（またはSpace/Enter）で開始し、矢印キーで操作します（↑加速、↓ブレーキ、←→ステア）。他の車や道路の端を避けてください。ヒットポイントは3です。プレイしていない間はテンポに同期した自動デモが動きます。⛶ボタンで全画面表示になります。スマホでは<b>PLAY</b>でフルスクリーンになり、バーチャルジョイスティック1本で操作します（画面のどこかに触れてドラッグ：上＝アクセル、下＝ブレーキ、左右＝ステア）。ゲームの開始と同時にAuto Droneが現在の設定で始まります。上部の✕でフルスクリーンを終了します。街路樹は車のヘッドライトで明るくなり、時々信号機も現れます。</p>
+<p>シンセに内蔵された、ローポリの表示器風ドライビングゲームです。<b>PLAY</b>（またはSpace/Enter）で開始し、矢印キーで操作します（↑加速、↓ブレーキ、←→ステア）。他の車や道路の端を避けてください。ヒットポイントは3です。プレイしていない間はテンポに同期した自動デモが動きます。⛶ボタンで全画面表示になります。スマホでは<b>PLAY</b>でフルスクリーンになり、バーチャルジョイスティック1本で操作します（画面のどこかに触れてドラッグ：上＝アクセル、下＝ブレーキ、左右＝ステア）。ゲームの開始と同時にAuto Droneが現在の設定で始まります。上部の✕でフルスクリーンを終了します。街路樹は車のヘッドライトで明るくなり、時々信号機も現れます。道路の外にある建物・木・街灯・遠景の山脈はホログラムで、時々グリッチ（信号ノイズ）が走り、山脈の色も変わります。画面上のテキストは選択できないので、長押ししてもゲームの邪魔になりません。</p>
 
 <h3>アプリとしてインストール</h3>
 <p>多くのブラウザで「インストール」または「ホーム画面に追加」ができます。インストール後は専用ウィンドウで起動し、オフラインでも動作します。新しいバージョンが公開されると更新バナーが表示されます。<b>UPDATE</b>をタップするとキャッシュを削除して再読み込みし、最新版になります。スマホではアプリを開いている間、画面が自動でスリープしません。</p>

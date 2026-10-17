@@ -1255,3 +1255,18 @@ body.vfd-touch.vfd-fs-active #vfdTouchLayer { display: block; }
 }
 #appUpdateBanner button:disabled { opacity: 0.6; cursor: default; }
 #appUpdateBanner .aub-x { border-color: transparent; background: transparent; padding: 5px 6px; color: rgba(93,240,200,0.6); }
+
+/* ════════════════════════════════════════════════
+   v1.2.0 — 画面上のテキストを選択できないようにする
+   ゲーム中の長押し・ドラッグでテキストが選択されて邪魔になるため、アプリ全体で無効にする。
+   入力欄(input/textarea)だけは、入力・編集のために選択できるままにする。
+   ════════════════════════════════════════════════ */
+html, body, body * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;   /* iOS: 長押しのコールアウト(コピー/共有メニュー)を出さない */
+}
+body input, body textarea, body [contenteditable="true"], body [contenteditable=""] {
+  -webkit-user-select: text;
+  user-select: text;
+}

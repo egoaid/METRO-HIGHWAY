@@ -276,6 +276,23 @@ window.Roadside = (function(){
   }
 
   // ════════════════════════════════
+  // 反射ポスト（縁石のすぐ外。左=橙 / 右=白）
+  // 画面の縁を速く流れる近景の手がかり。細く低いので、遠方では簡略化する。
+  // ════════════════════════════════
+  const POST_COL = { '-1': [255,178,60], '1': [225,255,250] };
+  function drawPost(g, o, fc, fy, fw, sc){
+    const u = sc*(W*0.5), uy = sc*(H*0.5);
+    const bx = fc + o.side*fw*1.035;
+    const h = 360*uy, w = Math.max(1, 26*u);
+    if(h < 1.5) return;
+    const col = POST_COL[o.side];
+    g.fillStyle = '#9aa7aa'; g.fillRect(bx - w*0.5, fy - h, w, h);
+    const rh = Math.max(1.2, 80*uy);
+    g.fillStyle = css(col); g.fillRect(bx - w*0.75, fy - h, w*1.5, rh);
+    if(w >= 2.2) glow(g, 'post'+o.side, col, 0.55, 0.15, bx, fy - h + rh*0.5, Math.max(3, Math.min(28, 150*u)));
+  }
+
+  // ════════════════════════════════
   // 横断歩道（11本の白帯。セグメントの台形に沿って描く）
   // ════════════════════════════════
   function drawCrosswalk(g, fc, fy, fw, nc, ny, nw){
@@ -290,5 +307,5 @@ window.Roadside = (function(){
     g.fill();
   }
 
-  return { collectLights, lightAt, drawTree, drawLamp, drawPool, drawSignal, drawCrosswalk, signalState };
+  return { collectLights, lightAt, drawTree, drawLamp, drawPool, drawSignal, drawPost, drawCrosswalk, signalState };
 })();

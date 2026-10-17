@@ -8,14 +8,20 @@ const g = cv && cv.getContext('2d');
 
 // ── サイズ ──
 let W=0,H=0;
-// ── シーン枠 ──
-// 投影は x を W/2、y を H/2 で拡大する（車・道路・構造物すべて同じ式）。縦長画面では y 倍率が
-// x の2倍以上になり、車が縦に伸びて細長く見えてしまう。そこで、ゲームのシーン（道路・車・街並み）は
-// 高さを W*SCENE_AR_MAX 以下に抑えた枠 SH に描き、画面の下端に寄せる（上端オフセット SY0）。
-// 余った上部は夜空（drawScene 側で空を上へ延長）。HUD・タッチ操作は実画面 (W,H) を使う。
-// 横長〜ほぼ正方形の画面では SH===H, SY0===0 で、従来と同じ。
-const SCENE_AR_MAX=1.25;
-let SH=0,SY0=0;
+// ── シーン枠（カメラの画角）──
+// 投影は x を W/2、y を H/2 で拡大する（車・道路・構造物すべて同じ式）。縦長画面にそのまま当てはめると
+// 縦の倍率だけが大きくなり、すべてが縦に伸びて見える。必要なのは「絵を縦長に変形する」ことではなく
+// 「同じ形のまま、カメラの画角(撮影範囲)だけを縦長にする」こと。
+//  ・倍率の比（縦/横）は基準の 16:9（SCENE_REF_AR=0.5625）に固定 = どの画面でも車やビルの形は同じ。
+//    シーン枠の高さ SH = W*SCENE_REF_AR（これが投影の基準 H）。
+//  ・画面が 16:9 より縦長なら、枠より上は夜空、下は手前の路面として「描画範囲」だけを広げる。
+//    自車の接地点が画面の高さの CAR_SCREEN_Y に来るよう、枠の上端を SY0 だけ下げる。
+//  ・HB = 仮想座標での描画下端（道路・地面を塗る範囲。SH 以上）。
+// 16:9 以下の横長画面（埋め込み表示・スマホ横持ちなど）では SH===H, SY0===0, HB===H で従来どおり。
+// HUD・タッチ操作は実画面 (W,H) の座標を使う。
+const SCENE_REF_AR=0.5625;
+const CAR_SCREEN_Y=0.72;
+let SH=0,SY0=0,HB=0;
 // タッチ端末（スマホ/タブレット）か。フルスクリーン時の操作UIと描画解像度の上限に使う。
 const IS_TOUCH_DEVICE=!!(window.matchMedia&&window.matchMedia('(pointer: coarse)').matches);
 function resize(){
@@ -30,7 +36,12 @@ function resize(){
   }
   if(W<10||H<10){W=870;H=220;}
   cv.width=W;cv.height=H;
-  SH=Math.min(H,Math.round(W*SCENE_AR_MAX));SY0=H-SH;
+  if(H<=W*SCENE_REF_AR){SH=H;SY0=0;}
+  else{
+    SH=Math.round(W*SCENE_REF_AR);
+    SY0=Math.max(0,Math.round(H*CAR_SCREEN_Y-0.82*SH));  // 0.82*SH = 枠内での自車の接地Y（PLAYER_Z で決まる）
+  }
+  HB=H-SY0;
 }
 resize();
 // 再試行: レイアウト完了後にもう一度サイズ取得
@@ -134,6 +145,8 @@ function buildCourse(){
 //  ・信号 : 市街/郊外の「前後4セグがすべて直線」の地点に、前の信号から40セグ以上離して置く
 //           （カーブ区間だと建物に隠れて見えないため）。置いたセグと次のセグに横断歩道を描く
 //  ・信号の位相は seg 番号から決める（信号ごとに赤/青のタイミングがずれる）
+//  ・反射ポスト: 縁石のすぐ外に 3セグごと・左右両側（左=橙 / 右=白）。画面の縁を速く流れる近景の
+//    手がかりで、速度感を出すためのもの（SpeedFx と対）
 function buildRoadside(){
   roadside=[]; roadsideBySeg={};
   const add=o=>{ roadside.push(o); (roadsideBySeg[o.segIdx]=roadsideBySeg[o.segIdx]||[]).push(o); };
@@ -142,6 +155,7 @@ function buildRoadside(){
   for(let i=0;i<SEG;i++){
     const rural=course[i].terrain==='rural';
     const sp=rural?24:12;
+    if(i%3===0){ add({kind:'post',segIdx:i,side:-1}); add({kind:'post',segIdx:i,side:1}); }
     if(i%sp===0)        add({kind:'lamp',segIdx:i,side:-1,h:2500,arm:1100});
     if(i%sp===sp/2)     add({kind:'lamp',segIdx:i,side: 1,h:2500,arm:1100});
     if(!rural && i>=4 && i<SEG-4 && i-lastSig>=40 && straight(i)){
@@ -194,11 +208,14 @@ function spawnCar(){
                :                       (20+Math.random()*100);
 
   // ── 生成位置は2箇所のみ ──
+  //  ・自車より遅い同方向車 / 対向車: 描画距離の奥から現れて近づく
+  //  ・自車より速い同方向車: 画面の下の外（後方）から現れ、自車を追い越して前へ出ていく
+  //    （自車が停止中でも、後ろから来た車は画面の下端から上へ現れる）
   let absZ;
-  if(oncoming || ownSpd >= player.speed){
-    absZ = cam.pos + PLAYER_Z - SEGZ * 2;
-  } else {
+  if(oncoming || ownSpd < player.speed){
     absZ = cam.pos + DRAW * SEGZ + SEGZ * 2;
+  } else {
+    absZ = cam.pos + carBehindSpawnRelZ(ct);
   }
 
   if(traffic.some(c=>Math.abs(c.z-absZ)<SEGZ*1.2))return;
@@ -214,7 +231,9 @@ function spawnCar(){
   // viewAngle: プレーヤーから見た相対角度(rad)。毎フレーム更新。
   //   将来の側面描画判定に使用。現時点では計算のみ、描画には未使用。
   const heading = oncoming ? Math.PI : 0;
-  traffic.push({z:absZ,x:cx,ownSpd,col,carType:ct,oncoming,heading,viewAngle:0,hitTimer:0,avoidsPlayer});
+  // passed: 自車を完全に追い越した（追い越された）状態。後方から来る車は最初から true（PASS! を出さない）
+  traffic.push({z:absZ,x:cx,ownSpd,col,carType:ct,oncoming,heading,viewAngle:0,hitTimer:0,avoidsPlayer,
+                passed:(absZ-cam.pos)<PLAYER_Z});
 }
 
 // ════════════════════════════════════
@@ -271,6 +290,7 @@ function makeTree(shapeName){
 
 function buildEnv(){
   envObjs=[];
+  let _envId=0;                                  // 構造物ごとの固定ID（ホログラムのグリッチ乱数用）
   for(let i=0;i<SEG;i+=2){
     if(Math.random()<0.60){
       const seg=course[i]||{terrain:'city'};
@@ -280,7 +300,7 @@ function buildEnv(){
         // 街路樹（樹形3種を 広葉:円柱:ドーム = 45:30:25 で混ぜる）
         const r=Math.random();
         const t=makeTree(r<0.45?'broad':r<0.75?'column':'dome');
-        t.segIdx=i; t.side=side; t.type='tree';
+        t.segIdx=i; t.side=side; t.type='tree'; t.id=++_envId;
         envObjs.push(t);
         continue;
       }
@@ -289,6 +309,7 @@ function buildEnv(){
       // 窓の点灯パターンはビルごとに一度だけ確定（毎フレーム再抽選するとチカチカする）
       const winLit=Array.from({length:winCols*floors},()=>Math.random()<0.34);
       envObjs.push({
+        id:++_envId,
         segIdx:i,
         side,
         type:'building',
@@ -380,14 +401,14 @@ const CAM_H=1000,CAM_D=0.84;
 const PLAYER_Z = 1312.5;
 
 // ── 統一透視投影関数（プレイヤー・AI 共通）──
-// road segment 描画用: sy を H+20 でクランプ（台形が画面外にはみ出さない）
+// road segment 描画用: sy を描画下端 HB+20 でクランプ（台形が画面外にはみ出さない）
 function proj(worldZ,cxAcc){
   if(worldZ<=0)return null;
   const s=CAM_D/worldZ;
   return{
     scale:s,
     cx:W*0.5 - (cxAcc||0),
-    sy:Math.min(H*0.5 + s*CAM_H*(H*0.5), H+20),
+    sy:Math.min(H*0.5 + s*CAM_H*(H*0.5), HB+20),
     sw:ROADW*s*(W*0.5)
   };
 }
@@ -403,6 +424,48 @@ function projFull(worldZ,cxAcc){
     sw:ROADW*s*(W*0.5)
   };
 }
+
+// ── 他車の寸法・画面外判定・衝突判定（描画と必ず同じ基準を使う）──
+// モデルのローカル最大寸法（高さ y・長さ z）。実寸 = 値 × WORLD_CAR_HALF_W × TYPE_SCALE（16c）。
+// 車体は「後端が Zw、前端が Zw+長さ」（ローカル z=0 が後端）。
+const CAR_LOCAL={ferrari328:{y:1.44,z:2.2},f40:{y:1.22,z:2.4},sedan:{y:1.48,z:2.5},coupe:{y:1.40,z:2.3},truck:{y:1.69,z:4.5}};
+function carWorldSize(type){
+  const k=(typeof WORLD_CAR_HALF_W==='number'?WORLD_CAR_HALF_W:312.5)
+         *((typeof TYPE_SCALE!=='undefined'&&TYPE_SCALE[type])||1);
+  const l=CAR_LOCAL[type]||CAR_LOCAL.ferrari328;
+  return {roof:l.y*k, len:l.z*k, half:k*1.05};
+}
+const PLAYER_LEN=2.2*312.5;   // 自車の長さ（ferrari328）
+// 前端の屋根（車の中で画面上いちばん高い点）が画面下端 HB に達する前端Z。
+// 前端Z がこれ以下になると、車全体が画面の下へ出ている。
+function carBelowZ(roof){
+  const ys=SH*0.5;
+  return CAM_D*ys*Math.max(1,CAM_H-roof)/Math.max(1,HB-ys);
+}
+// 画面外か（描画を省略してよいか）。見えている部分があるかを、いちばん奥の前端で判定する
+// （前端は後端より中心寄りにあるので、前端が出ていれば車全体が出ている）。
+function carOffscreen(relZ,xWorld,type){
+  const d=carWorldSize(type), zf=relZ+d.len;
+  if(zf<=30) return true;                                   // 全体がカメラの真下/後ろ
+  const ys=SH*0.5, s=CAM_D/zf;
+  if(ys+s*(CAM_H-d.roof)*ys>=HB+4) return true;             // 前端の屋根が画面下端より下
+  const cx=W*0.5+xWorld*s*W*0.5, hw=d.half*s*W*0.5;
+  return cx-hw>W+8||cx+hw<-8;                               // 左右の外
+}
+// 追い越されて画面の下へ完全に出た車を消す前端Z / 画面の下の外（後方）への出現位置
+function carCullFrontZ(type){ return 0.5*carBelowZ(carWorldSize(type).roof); }
+function carBehindSpawnRelZ(type){ const d=carWorldSize(type); return 0.9*carBelowZ(d.roof)-d.len; }
+// 自車と接触しているか（相対Z）。後端同士の差で、互いの車体の長さが重なる範囲（8割で判定）。
+function carTouchesPlayer(relZ,type){
+  const d=carWorldSize(type);
+  return relZ+d.len*0.8>PLAYER_Z && relZ<PLAYER_Z+PLAYER_LEN*0.8;
+}
+
+// ── 道路の外側に置く物の中心位置 ──
+// 縁石(路肩の帯)まで含めて道路とみなす余白 ROAD_EDGE_CLEAR を取り、その外側に「半幅」ぶん離す。
+// 半幅は 建物=bwpx（左右 bx±bwpx で描く）/ 木=全幅の半分。
+const ROAD_EDGE_CLEAR=1.08;
+function roadsideCenterOffset(fw,halfWidthPx){ return fw*ROAD_EDGE_CLEAR+halfWidthPx+4; }
 
 // 旧 playerCarRef()（スクリーン比率ベースの車サイズ基準）は廃止。
 // 車体サイズは WORLD_CAR_HALF_W（ワールド単位の定数）に統一され、
