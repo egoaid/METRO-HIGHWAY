@@ -50,12 +50,59 @@ function _mT(tx, ty, tz) {
 //
 // Xw, Yw, Zw はワールド単位（road の ROADW と同じ単位系）。
 // cxAccPx は road のカーブによるスクリーン空間オフセット（proj()のcxAcc）。
-// 近接面: カメラに近すぎる(Zw < CAR_NEAR_Z)点は Z=CAR_NEAR_Z に押さえて投影する（面ごと捨てない）。
-// 追い越された車は、後端がカメラ面に達しても前側が画面の下部にまだ見えているので、
-// 面を捨てると見えている部分が突然消える。押さえた点はどのみち画面のはるか下の外に投影される。
-const CAR_NEAR_Z = 30;
+// 近接面クリッピング: 追い越された車は、後端がカメラ面(Z≈0)を越えても前側が画面の下部に見えている
+// （トラックは全長約2000ユニット）。面を捨てると見えている部分が突然消え、点を Z=近接面に
+// 「押さえる(クランプ)」と、見えている面が画面の外へ引き伸ばされて歪む（実際にトラックで発生した）。
+// そこで各ポリゴンをカメラ空間で Z>=CAR_NEAR_Z の側に切り取り(Sutherland–Hodgman)、切断点を含めて
+// 投影する。切り取った辺は直線のまま投影されるので、見えている部分の形は正確になる。
+let CAR_NEAR_Z = 30;
+function _clipNear(poly) {          // poly: カメラ空間の [x,y,z] の配列
+  const out = [], n = poly.length;
+  for (let i = 0; i < n; i++) {
+    const a = poly[i], b = poly[(i + 1) % n];
+    const ina = a[2] >= CAR_NEAR_Z, inb = b[2] >= CAR_NEAR_Z;
+    if (ina) out.push(a);
+    if (ina !== inb) {
+      const t = (CAR_NEAR_Z - a[2]) / (b[2] - a[2]);
+      out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, CAR_NEAR_Z]);
+    }
+  }
+  return out;
+}
+// 画面クリップ: 近接面(Z=30)で切った面でも、投影すると座標が数万pxになる（トラックで X=-36000, Y=15000）。
+// 極端な座標は Canvas の描画エンジンが正しく塗れず、画面全体に半透明のくさび形が出る（実機ブラウザで発生）。
+// そこで投影後のポリゴンを、画面より少し外側の矩形（余白 CLIP_MARGIN）でもクリップして座標を有界にする。
+// 余白は画面の外なので、見えている部分の形は変わらない。
+const CLIP_MARGIN = 160;
+function _clipRect(pts, x0, y0, x1, y1) {
+  let out = pts;
+  const edges = [
+    [p => p.sx >= x0, (a, b) => { const t = (x0 - a.sx) / (b.sx - a.sx); return { sx: x0, sy: a.sy + (b.sy - a.sy) * t, clip: false }; }],
+    [p => p.sx <= x1, (a, b) => { const t = (x1 - a.sx) / (b.sx - a.sx); return { sx: x1, sy: a.sy + (b.sy - a.sy) * t, clip: false }; }],
+    [p => p.sy >= y0, (a, b) => { const t = (y0 - a.sy) / (b.sy - a.sy); return { sx: a.sx + (b.sx - a.sx) * t, sy: y0, clip: false }; }],
+    [p => p.sy <= y1, (a, b) => { const t = (y1 - a.sy) / (b.sy - a.sy); return { sx: a.sx + (b.sx - a.sx) * t, sy: y1, clip: false }; }],
+  ];
+  for (const [inside, cut] of edges) {
+    const inp = out; out = [];
+    for (let i = 0; i < inp.length; i++) {
+      const a = inp[i], b = inp[(i + 1) % inp.length], ia = inside(a), ib = inside(b);
+      if (ia) out.push(a);
+      if (ia !== ib) out.push(cut(a, b));
+    }
+    if (out.length < 3) return null;
+  }
+  return out;
+}
+function _projPoly(cp, cxAccPx) {   // 近接面でクリップ → 投影 → 画面矩形でクリップ。見える部分が無ければ null
+  const c = cp.every(p => p[2] >= CAR_NEAR_Z) ? cp : _clipNear(cp);
+  if (c.length < 3) return null;
+  const pr = c.map(p => { const q = _projWorld(p[0], p[1], p[2], cxAccPx); return { sx: q.sx, sy: q.sy, clip: false }; });
+  // 描画範囲（シーン座標）: 横 0..W、縦 -SY0..HB。縦長画面では上に空・下に路面が延びる
+  const top = -(typeof SY0 === 'number' ? SY0 : 0), bot = (typeof HB === 'number' && HB > 0) ? HB : H;
+  return _clipRect(pr, -CLIP_MARGIN, top - CLIP_MARGIN, W + CLIP_MARGIN, bot + CLIP_MARGIN);
+}
 function _projWorld(Xw, Yw, Zw, cxAccPx) {
-  if (Zw < CAR_NEAR_Z) Zw = CAR_NEAR_Z;
+  if (Zw < CAR_NEAR_Z) Zw = CAR_NEAR_Z;   // 安全策（クリップ済みの点はここに来ない）
   const s = CAM_D / Zw;
   return {
     sx: (W * 0.5 - (cxAccPx || 0)) + Xw * s * (W * 0.5),
@@ -389,14 +436,12 @@ function _facesTrk() {
 }
 // ── 面タイプ別描画 ──
 // camPts: カメラ空間座標マップ（カリング用）
-function _drawFace(g, pts, camPts, face, bodyCol, glowCol) {
-  const fp = face.k.map(k => pts[k]);
-  if (!fp || fp.some(p => !p || p.clip)) return;
-  // カメラ空間法線でカリング（スクリーン空間2D外積より正確、全頂点使用）
+function _drawFace(g, camPts, face, bodyCol, glowCol, cxAccPx) {
+  // カメラ空間法線でカリング（スクリーン空間2D外積より正確、全頂点使用）。近接面をまたぐ面も正しく判定できる
   const cp = face.k.map(k => camPts[k]);
-  if (cp.every(p => p && p[2] > 0.5)) {
-    if (!_isFrontCamN(cp)) return;
-  }
+  if (cp.some(p => !p) || !_isFrontCamN(cp)) return;
+  const fp = _projPoly(cp, cxAccPx);        // 近接面でクリップして投影
+  if (!fp) return;
 
   const lw = Math.max(0.5, Math.abs((fp[0].sx||0) - (fp[1]||fp[0]).sx) * 0.018);
 
@@ -515,9 +560,9 @@ function _decalsOf(carType) {
 }
 function _drawDecal(g, d, model, cxAccPx) {
   const cam = d.corners.map(c => _m4v(model, c[0], c[1], c[2], 1));
-  if (cam.some(c => c[2] < CAR_NEAR_Z)) return;   // 装飾（ライト等）は押さえず、近すぎるなら省く（その時は画面の下の外）
   if (!_isFrontCamN(cam)) return;                 // 見えていない側の面には出さない
-  const pts = cam.map(c => { const p = _projWorld(c[0], c[1], c[2], cxAccPx); return { sx: p.sx, sy: p.sy, clip: false }; });
+  const pts = _projPoly(cam, cxAccPx);            // 近接面でクリップして投影
+  if (!pts) return;
   const st = _DECAL_STYLE[d.kind];
   if (st.glow) {
     const wpx = Math.hypot(pts[1].sx - pts[0].sx, pts[1].sy - pts[0].sy);
@@ -528,6 +573,8 @@ function _drawDecal(g, d, model, cxAccPx) {
 }
 
 // ── 地面影 ──
+// 描画範囲の下端（シーン座標）。縦長画面では HB（手前の路面まで）、それ以外は H
+function _bottomY() { return (typeof HB === 'number' && HB > 0) ? HB : H; }
 function _drawShadow(g, pts) {
   const brl = pts.BRL, brr = pts.BRR;
   if (!brl || !brr || brl.clip || brr.clip) return;
@@ -538,7 +585,8 @@ function _drawShadow(g, pts) {
   // の外まで伝播して「この車以降、その手前の車が全て描画されない」
   // という重大なバグを引き起こしていた（実際にNode.js+@napi-rs/canvasで
   // 対向車を含む配列を forEach 処理させ、例外で処理が中断することを確認済み）。
-  const rw  = Math.max(1, Math.abs(brr.sx - brl.sx) * 1.1);
+  const rw  = Math.min(W*1.2, Math.max(1, Math.abs(brr.sx - brl.sx) * 1.1));   // 後端が近い時に巨大になりすぎないよう上限
+  if (cy2 - rw*0.2 > _bottomY() + 20) return;   // 影が画面の下の外なら描かない
   const sh  = g.createRadialGradient(cx2, cy2, 0, cx2, cy2, rw);
   sh.addColorStop(0, 'rgba(0,0,0,0.55)'); sh.addColorStop(1, 'transparent');
   g.fillStyle = sh;
@@ -553,7 +601,8 @@ function _drawGlow(g, pts, glowCol) {
   if (!brl || !brr || brl.clip || brr.clip) return;
   const cx2 = (brl.sx + brr.sx) * 0.5, cy2 = brl.sy;
   // 同上の理由で負の半径を防ぐ
-  const rw  = Math.max(1, Math.abs(brr.sx - brl.sx) * 0.70);
+  const rw  = Math.min(W*1.2, Math.max(1, Math.abs(brr.sx - brl.sx) * 0.70));
+  if (cy2 > _bottomY() + 20) return;            // 光暈が画面の下の外なら描かない
   const ug  = g.createRadialGradient(cx2, cy2 + 2, 0, cx2, cy2 + 2, rw);
   ug.addColorStop(0, _hexA(glowCol, 0.22)); ug.addColorStop(1, 'transparent');
   g.fillStyle = ug;
@@ -612,9 +661,10 @@ function drawCar3D(g, Xw, Yw, Zw, cxAccPx, bodyCol, glowCol,
     const v = vObj[k];
     const cam = _m4v(model, v[0], v[1], v[2], 1);
     camPts[k] = cam;
-    const p = _projWorld(cam[0], cam[1], cam[2], cxAccPx);   // 近接点は _projWorld が CAR_NEAR_Z に押さえる
-    pts[k] = p ? { sx: p.sx, sy: p.sy, clip: false }
-               : { sx: W*0.5, sy: H*0.5, clip: true };
+    // 名前付き点（影・光暈が使う後端の点）は、近接面より手前なら clip 扱い（その時は影・光暈を省く）
+    if (cam[2] < CAR_NEAR_Z) { pts[k] = { sx: W*0.5, sy: H*0.5, clip: true }; continue; }
+    const p = _projWorld(cam[0], cam[1], cam[2], cxAccPx);
+    pts[k] = { sx: p.sx, sy: p.sy, clip: false };
   }
 
   // ── 描画 ──
@@ -625,11 +675,10 @@ function drawCar3D(g, Xw, Yw, Zw, cxAccPx, bodyCol, glowCol,
     const allFaces = fArr.concat();
     allFaces.sort((a,b) => b.z - a.z);
     for (const face of allFaces) {
-      const fp = face.k.map(k => pts[k]);
       const cp = face.k.map(k => camPts[k]);
-      if (!fp || fp.some(p => !p || p.clip)) continue;
-      if (cp.every(p => p) && !_isFrontCamN(cp)) continue;
-      _poly(g, fp, 'rgba(255,255,255,0.92)', null, 0);
+      if (cp.some(p => !p) || !_isFrontCamN(cp)) continue;
+      const fp = _projPoly(cp, cxAccPx);
+      if (fp) _poly(g, fp, 'rgba(255,255,255,0.92)', null, 0);
     }
   } else {
     // 通常描画: 各面の実カメラ空間平均Zでソート（ペインターズアルゴリズム）
@@ -654,7 +703,7 @@ function drawCar3D(g, Xw, Yw, Zw, cxAccPx, bodyCol, glowCol,
       (after[idx] = after[idx] || []).push(d);
     }
     facesWithZ.forEach(({ face }, i) => {
-      _drawFace(g, pts, camPts, face, bodyCol, glowCol);
+      _drawFace(g, camPts, face, bodyCol, glowCol, cxAccPx);
       if (after[i]) for (const d of after[i]) _drawDecal(g, d, model, cxAccPx);
     });
   }
@@ -725,5 +774,23 @@ function drawPlayerCar(g,bpm,t){
   // road と同一の cxAcc（直前の道路中心オフセット）と単位系を共有する。
   drawCar3D(g, player.x * ROADW, 0, PLAYER_Z, roadCenterOffsetPx,
             '#cc0020', '#5df0c8', yaw, rollZ, 'ferrari328', true, false, 1.0);
+
+  // 無敵（星を取った直後）: 車全体が金色に光る。残り2秒は点滅して終わりを知らせ、終わると元に戻る。
+  //  ・車の周りに光暈（加算合成）  ・同じ車を金色で加算合成して重ね、全体を明るく  ・光り方は脈動する
+  if (player.inv > 0) {
+    const blinkOff = player.inv < 2 && (Math.floor(t / 110) % 2 === 0);
+    if (!blinkOff) {
+      const pulse = 0.5 + 0.5 * Math.sin(t * 0.014);
+      const c = _projWorld(player.x * ROADW, 180, PLAYER_Z, roadCenterOffsetPx);
+      const rad = WORLD_CAR_HALF_W * (CAM_D / PLAYER_Z) * (W * 0.5) * 3.2;
+      Roadside.glow(g, 'invAura', [255, 215, 90], 0.55 + 0.20 * pulse, 0.20, c.sx, c.sy, Math.max(8, rad));
+      g.save();
+      g.globalCompositeOperation = 'lighter';
+      g.globalAlpha = 0.34 + 0.20 * pulse;
+      drawCar3D(g, player.x * ROADW, 0, PLAYER_Z, roadCenterOffsetPx,
+                '#ffb020', '#fff0a0', yaw, rollZ, 'ferrari328', true, false, 1.0);
+      g.restore();
+    }
+  }
 }
 

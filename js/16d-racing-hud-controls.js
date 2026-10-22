@@ -32,6 +32,21 @@ function drawGameHUD(g){
   g.fillText(`${(game.dist/1000).toFixed(2)}km`,W-W*0.03,H*0.215);
   g.fillStyle='rgba(93,240,200,0.42)';
   g.fillText(`BEST ${(game.best/1000).toFixed(2)}km`,W-W*0.03,H*0.252);
+  // 無敵（星）の残り時間: 画面上部中央に星マークとバー。残り2秒は点滅
+  if(player.inv>0){
+    const cx=W*0.5, y=H*0.085, bw=W*0.20, bh=Math.max(4,H*0.012);
+    const blink=player.inv<2&&(Math.floor(performance.now()/110)%2===0);
+    if(!blink){
+      g.shadowColor='#ffd24a';g.shadowBlur=8;
+      g.fillStyle='#ffd24a';g.textAlign='center';
+      g.font=`${Math.round(H*0.04)}px serif`;
+      g.fillText('★',cx-bw*0.5-H*0.03,y+bh*0.5+H*0.012);
+      g.fillStyle='rgba(255,210,74,0.25)';g.fillRect(cx-bw*0.5,y,bw,bh);
+      g.fillStyle='#ffd24a';g.fillRect(cx-bw*0.5,y,bw*Math.min(1,player.inv/INV_TIME),bh);
+      g.font=`${Math.round(H*0.028)}px 'Share Tech Mono',monospace`;
+      g.fillText(`${player.inv.toFixed(1)}s`,cx,y+bh+H*0.034);
+    }
+  }
   g.shadowBlur=0;g.textAlign='left';
 }
 function drawDemoOverlay(g){

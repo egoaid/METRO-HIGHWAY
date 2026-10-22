@@ -1,7 +1,12 @@
+// ── デモの自動運転の状態 ──
+// 目標は「レーン」（自車線=右半分の2レーン 0.22 / 0.66）。切り替えは最低 DEMO_LANE_HOLD 秒あけてヒステリシスを持たせ、
+// 目標は低域通過で滑らかにして、臨界減衰のばねで追従する。これで左右の小刻みな揺れが出ない。
+const DEMO_LANE_HOLD=2.0;
+let demoLane=0.66, demoLaneT=0, demoTgtS=0.66, demoVx=0;
 function frame(t){
   if(!enabled)return;
   rafId=requestAnimationFrame(frame);
-  if(typeof Roadside==='undefined'||typeof Hologram==='undefined'||typeof SpeedFx==='undefined')return; // 16f/16h が読み込み中の間は描かない
+  if(typeof Roadside==='undefined'||typeof Hologram==='undefined'||typeof SpeedFx==='undefined'||typeof Traffic==='undefined'||typeof StarBonus==='undefined')return; // 16f/16h/16i/16j が読み込み中の間は描かない
   if(t-lastT<33)return;
   const dt=Math.min((t-lastT)/1000,0.08);
   lastT=t;
@@ -73,35 +78,26 @@ function frame(t){
     const tgt=(bpm/120)*110;
     player.speed+=(tgt-player.speed)*0.04;
 
-    // 基本レーン位置: 中央付近、カーブには僅かだけ内側へ寄る
-    // （大げさに振られないよう係数は小さめに抑える）。
-    let demoTargetX = -curSeg.curve * 0.22;
-
-    // ── 前方車両を自然に回避 ──
-    // 実際の当たり判定・ダメージは下の PLAY 分岐でのみ発生するため
-    // （if(mode===MODE.PLAY&&...) でガード済み）、ここは見た目上の
-    // 運転挙動だけを作る。最も近い「進路が重なりそうな」前方車両を
-    // 探し、空いている側へ目標位置をずらす。
-    let avoidDx = 0, avoidDist = Infinity;
-    traffic.forEach(car=>{
-      // 自車(PLAYER_Z)の前方の車だけが対象。カメラ基準だと、自車の後ろの車を避けてしまう
-      const fwd = (car.z - cam.pos - PLAYER_Z) / SEGZ;
-      if(fwd > 0.3 && fwd < 7 && fwd < avoidDist){
-        const dx = car.x - player.x;
-        if(Math.abs(dx) < 0.55){ avoidDist = fwd; avoidDx = dx; }
-      }
+    // ── 目標レーン（右側通行: 自車線の2レーンのどちらか）──
+    // 以前は毎フレーム「カーブの段差」と「避ける向き(相手の横位置で反転)・強さ(距離で連続変化)」から
+    // 目標を作り直していたため、目標が小刻みに揺れ、車体の傾き(bank)も揺れて見えた。
+    demoLaneT += dt;
+    const laneBlocked=(x,fromSeg,toSeg)=>traffic.some(car=>{
+      const ahead=(car.z-cam.pos-PLAYER_Z)/SEGZ;
+      return ahead>fromSeg&&ahead<toSeg&&Math.abs(car.x-x)<0.26;
     });
-    if(avoidDist < 7){
-      const avoidDir = avoidDx >= 0 ? -1 : 1; // 相手が右→左へ、左→右へ
-      const strength = 0.5 * (1 - avoidDist / 7); // 近いほど強く避ける
-      demoTargetX += avoidDir * (0.35 + strength);
+    if(demoLaneT>DEMO_LANE_HOLD&&laneBlocked(demoLane,0.3,8)){
+      const other=demoLane>0.44?0.22:0.66;
+      if(!laneBlocked(other,-2.5,9)){demoLane=other;demoLaneT=0;}   // 空いている方へ1回だけ移る
     }
-    demoTargetX = Math.max(-0.65, Math.min(0.65, demoTargetX));
-
-    // 目標へばね/減衰で滑らかに追従（xv・xとも穏当な範囲でクランプ）
-    player.xv += (demoTargetX - player.x) * 0.045 - player.xv * 0.16;
-    player.xv = Math.max(-0.045, Math.min(0.045, player.xv));
-    player.x  = Math.max(-0.7, Math.min(0.7, player.x + player.xv));
+    // カーブには僅かだけ内側へ寄る。目標自体を低域通過（約0.6秒）して段差を消す
+    const rawTgt=Math.max(-0.7,Math.min(0.7,demoLane-curSeg.curve*0.10));
+    demoTgtS+=(rawTgt-demoTgtS)*Math.min(1,dt*1.6);
+    // 臨界減衰のばね（K=6, C=2√K）。速度[1/s]で積分し、player.xv(1フレームあたり)へ変換
+    demoVx+=(6*(demoTgtS-player.x)-4.9*demoVx)*dt;
+    demoVx=Math.max(-0.9,Math.min(0.9,demoVx));
+    player.x=Math.max(-0.7,Math.min(0.7,player.x+demoVx*dt));
+    player.xv=demoVx*dt;
     player.bank += (-(player.xv*16) - player.bank) * 0.12;
     player.bank = Math.max(-0.35, Math.min(0.35, player.bank));
     // ── 衝突判定なし ──
@@ -135,94 +131,14 @@ function frame(t){
 
   // ══ 交通スポーン ══
   spawnTick++;
-  if(spawnTick>Math.max(20,60-(bpm-60)*0.12)){spawnTick=0;spawnCar();}
+  if(spawnTick>Math.max(8,24-(bpm-60)*0.05)){spawnTick=0;spawnCar();}
 
   // ══ 交通更新 ══
-  traffic=traffic.filter(car=>{
-    // ── 前方車両の移動 ──
-    // car.z はワールド座標（固定）。
-    // cam.pos が player.speed*dt*CAM_SCALE で増加することで
-    // relZ = car.z - cam.pos は自動的に減少する（プレーヤーが前進）。
-    //
-    // 車両固有速度による補正:
-    //   車両の固有速度分だけ car.z を前進させることで
-    //   「この車は実際に走っている」状態を表現する。
-    //
-    //   相対速度 = player.speed - car.ownSpd
-    //   正: プレーヤーが速い → 追い付く → relZ 縮小（car.z 補正後）
-    //   負: 車両が速い → 引き離される → relZ 拡大
-    //   プレーヤー停止時(player.speed=0):
-    //     car.z += car.ownSpd * dt * CAM_SCALE
-    //     → relZ が増大 → 車両が前方に走り去る（追い抜かれる）
-    car.z += (car.oncoming ? -1 : 1) * SpeedFx.vis(car.ownSpd) * dt * CAM_SCALE;
+  // 右側通行・追従・車線変更・違反車・衝突と揺れ・追い越し/消滅は 16i-racing-traffic.js
+  Traffic.update(dt);
 
-    // viewAngle: 道路中心（=固定カメラの視線方向）から見た車両への角度(rad)。
-    // Math.atan2(dx, dz) → 0=真正面、±π/2=真横、±π=真後ろ。
-    // カメラは画面中央に固定されており、横移動するのはプレーヤーのみ。
-    // よってyaw（車体の向き）はplayer.xに依存してはならず、road center
-    // （car.xそのもの、正規化座標-1〜+1）だけを基準にする。
-    // player.xはscreenX側（p.cx + car.x*fw）でのみ使用し、ここでは使わない。
-    const _relZ = car.z - cam.pos;
-    const _relX = car.x * ROADW;
-    car.viewAngle = Math.atan2(_relX, _relZ);
-
-    const relZ2 = _relZ;
-
-    // ── 消滅判定 ──
-    // 後方: 追い越されても、画面の下へ完全に出る（前端が下端の外へ出る）まで消さない。
-    //   以前は自車の位置(PLAYER_Z)で描画を打ち切っていたため、車が自車の位置で突然消えていた。
-    // 前方: 速い車が描画限界の外まで離れた
-    const dims = carWorldSize(car.carType);
-    if(relZ2 + dims.len < carCullFrontZ(car.carType)) return false;
-    if(relZ2 > DRAW*SEGZ+SEGZ*3) return false;
-
-    // ── 追い越し（PASS!）: 自車の後端より完全に後ろへ下がった時に1回だけ ──
-    if(!car.oncoming){
-      if(!car.passed && relZ2 + dims.len < PLAYER_Z){
-        car.passed = true;
-        if(mode===MODE.PLAY){ playPassSound(); addLog('PASS!'); }
-      } else if(car.passed && relZ2 > PLAYER_Z + PLAYER_LEN){
-        car.passed = false;   // 再び自車の前に出た（また追い越せば PASS!）
-      }
-    }
-
-    // ── 衝突判定 ──
-    // 描画と同じ基準（自車の車体と重なったか）。以前はカメラ基準の窓(fwd<3)で、画面の外(自車の後方
-    // 約770ユニット)で見えない所からダメージが入っていた。
-    if(mode===MODE.PLAY&&!car.hitTimer&&game.hitTimer===0){
-      if(carTouchesPlayer(relZ2, car.carType)){
-        const hitW = car.carType==='truck' ? 0.35 : 0.26;
-        if(Math.abs(car.x - player.x) < hitW){
-          car.hitTimer=40; takeDamage(Math.sign(player.x - car.x)); // 相手から離れる側へ
-        }
-      }
-    }
-    if(car.hitTimer > 0) car.hitTimer--;
-
-    // ── 車両の回避・分離 ──
-    const fwd = relZ2/SEGZ;
-    if(fwd > 0 && fwd < 12){
-      // 車同士の分離（常時）
-      traffic.forEach(o=>{
-        if(o===car) return;
-        if(Math.abs(o.z-car.z)<SEGZ*1.5){
-          const dx=car.x-o.x;
-          if(Math.abs(dx)<0.28){
-            car.x=Math.max(-0.88,Math.min(0.88,car.x+(dx>=0?0.015:-0.015)));
-          }
-        }
-      });
-      // プレーヤー回避: 10%のスポーツカー系のみ
-      if(car.avoidsPlayer){
-        const dx = car.x - player.x;
-        if(Math.abs(dx) < 0.40){
-          car.x = Math.max(-0.88, Math.min(0.88, car.x + (dx>=0 ? 0.025 : -0.025)));
-        }
-      }
-    }
-
-    return true;
-  });
+  // ══ 星のボーナス・無敵 ══（16j-racing-star.js）
+  if(mode===MODE.PLAY) StarBonus.update(dt,t);
 
   updateEngineSound(player.speed, SPD_MAX);
   drawScene(t,bpm);
@@ -524,24 +440,36 @@ function drawWorld(t,bpm){
     const sliceMap = new Map();
     slices.forEach(s => { sliceMap.set(s.n, s.cxA); });
 
+    // 描く物（他車と星）を奥行き順に。自車(PLAYER_Z)より手前のものは自車より後に描く
     const farList=[], nearList=[];
-    traffic.slice().sort((a,b)=>(b.z-a.z)).forEach(car=>{   // 遠→近
+    const items=[];
+    traffic.forEach(car=>{
       const relZ = car.z - cam.pos;
       if(relZ > DRAW*SEGZ) return;
       if(carOffscreen(relZ, car.x*ROADW, car.carType)) return;
-      (relZ < PLAYER_Z ? nearList : farList).push(car);
+      items.push({k:'car', relZ, car});
     });
-    const drawCars = list => list.forEach(car=>{
-      const relZ = car.z - cam.pos;
+    StarBonus.items().forEach(st=>{
+      const relZ = st.z - cam.pos;
+      if(relZ > DRAW*SEGZ || relZ < 200) return;
+      items.push({k:'star', relZ, star:st});
+    });
+    items.sort((a,b)=>b.relZ-a.relZ);                       // 遠→近
+    items.forEach(it=>(it.relZ < PLAYER_Z ? nearList : farList).push(it));
+    const drawCars = list => list.forEach(it=>{
+      const relZ = it.relZ;
       // カーブオフセット取得（slicesから補間）— road と同一のcxAcc
       const nFloat = (relZ - (SEGZ - camFrac)) / SEGZ;
       const nIdx   = Math.max(0, Math.floor(nFloat));
       const cxAcc  = sliceMap.has(nIdx) ? sliceMap.get(nIdx) : 0;
       try {
+        if(it.k==='star'){ StarBonus.draw(g, it.star, relZ, cxAcc, t); return; }
+        const car = it.car;
+        // 向き = 基本の向き + 衝突の揺れ + 車線変更の舵（Traffic.visYaw）
         drawTrafficCar(g, car.x * ROADW, relZ, cxAcc,
-          car.col, car.carType, car.heading, false);
+          car.col, car.carType, car.heading + Traffic.visYaw(car), false);
       } catch(_) {
-        // 1台の描画で例外が出ても、他の車の描画を巻き添えで止めない
+        // 1つの描画で例外が出ても、他の描画を巻き添えで止めない
       }
     });
     drawCars(farList);

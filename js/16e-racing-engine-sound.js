@@ -110,6 +110,21 @@ function updateEngineSound(speed, maxSpeed){
   eng3Gain.gain.setTargetAtTime(0.08+ratio*0.18, now, 0.08);
 }
 
+function playStarSound(){
+  if(!sndReady) return;
+  // 星を取った時: 明るい上昇アルペジオ（C6 E6 G6 C7）
+  const now = sndCtx.currentTime;
+  [1046.5,1318.5,1568,2093].forEach((f,i)=>{
+    const osc = sndCtx.createOscillator(), gn = sndCtx.createGain();
+    osc.type='triangle'; osc.frequency.value=f;
+    const t0 = now + i*0.07;
+    gn.gain.setValueAtTime(0.0001,t0);
+    gn.gain.exponentialRampToValueAtTime(0.16,t0+0.015);
+    gn.gain.exponentialRampToValueAtTime(0.001,t0+0.28);
+    osc.connect(gn); gn.connect(sndCtx.destination);
+    osc.start(t0); osc.stop(t0+0.30);
+  });
+}
 function playCrashSound(){
   if(!sndReady) return;
   const now = sndCtx.currentTime;

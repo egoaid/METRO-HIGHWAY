@@ -69,9 +69,22 @@ const CAM_SCALE = 14;
 // ════════════════════════════════════
 const MODE={DEMO:'demo',PLAY:'play',OVER:'over'};
 let mode=MODE.DEMO;
-const game={hp:3,maxHp:3,dist:0,best:0,hitTimer:0,overTimer:0};
+const game={hp:3,maxHp:3,dist:0,best:0,hitTimer:0,overTimer:0,nextStar:0};
+
+// ── 交通ルールと星のボーナス ──
+// 右側通行: 自車と同方向の車線は道路の右半分、対向車線は左半分（車線の中央。道路は4車線: ±0.22, ±0.66）。
+// 他車は原則これを守る。一部は違反して自由に走る（16i-racing-traffic.js）。自車はどこへでも走れる。
+const LANES_FWD=[0.22,0.66];
+const LANES_ONC=[-0.22,-0.66];
+const PLAYER_START_X=0.44;       // 開始位置: 右半分（自車線）の中央
+// 走行距離が STAR_FIRST_DIST(m) を超えると、道路に星が落ちる（16j-racing-star.js）。取ると INV_TIME 秒だけ無敵。
+const STAR_FIRST_DIST=5000;
+const INV_TIME=8;                // 無敵時間(秒)
+const INV_BOOST=2.2;             // 無敵中に衝突された他車の揺れの倍率
+let bonusStars=[];
 const cam={pos:0};
 const player={x:0,xv:0,speed:0,bank:0,
+  inv:0,     // 無敵の残り時間(秒)。星を取ると INV_TIME
   slip:0,    // 衝突スリップ: 車体の向き(ヨー角, rad)。+で鼻先が右。ロール(横転)はしない
   slipV:0,   // ヨー角速度(rad/s)
   slideV:0   // 衝突で横へ流れる速度(player.x単位/s)
@@ -144,7 +157,7 @@ function buildCourse(){
 //  ・街灯 : 市街/郊外は12セグごと、田舎は24セグごとに、左右交互（反対側は半周期ずらし）
 //  ・信号 : 市街/郊外の「前後4セグがすべて直線」の地点に、前の信号から40セグ以上離して置く
 //           （カーブ区間だと建物に隠れて見えないため）。置いたセグと次のセグに横断歩道を描く
-//  ・信号の位相は seg 番号から決める（信号ごとに赤/青のタイミングがずれる）
+//  ・信号は常に青（右側の支柱から道路を横切るアーム。自車側の灯器は手前向き、対向車線側は裏面が見える）
 //  ・反射ポスト: 縁石のすぐ外に 3セグごと・左右両側（左=橙 / 右=白）。画面の縁を速く流れる近景の
 //    手がかりで、速度感を出すためのもの（SpeedFx と対）
 function buildRoadside(){
@@ -159,7 +172,7 @@ function buildRoadside(){
     if(i%sp===0)        add({kind:'lamp',segIdx:i,side:-1,h:2500,arm:1100});
     if(i%sp===sp/2)     add({kind:'lamp',segIdx:i,side: 1,h:2500,arm:1100});
     if(!rural && i>=4 && i<SEG-4 && i-lastSig>=40 && straight(i)){
-      add({kind:'signal',segIdx:i,side:1,phase:(i*7)%12});
+      add({kind:'signal',segIdx:i,side:1});
       course[i].xing=true; course[i+1].xing=true;
       lastSig=i;
     }
@@ -174,67 +187,8 @@ const NEON=['#e03060','#5df0c8','#c060ff','#ff8020','#20a0ff'];
 let traffic=[];
 let spawnTick=0;
 
-function spawnCar(){
-  // ── 距離に応じた難易度レベル（0〜4） ──
-  const distKm = game.dist / 1000;
-  const lv = distKm < 4  ? 0
-           : distKm < 6  ? 1
-           : distKm < 9  ? 2
-           : distKm < 13 ? 3
-           :                4;
-
-  // 最大同時台数: lv0=7、lv4=14
-  const maxCars = 7 + lv * 2;
-  if(traffic.length >= maxCars) return;
-
-  // ── 車種ウェイト（距離が増えてもトラックは少しだけ増える） ──
-  // lv0: truck=0.12、lv4: truck=0.22
-  const truckW = Math.min(0.22, 0.12 + lv * 0.025);
-  const rem    = 1.0 - truckW - 0.05; // f40は固定0.05
-  const baseW  = rem / 3;
-  const types  = ['ferrari328','coupe','sedan','truck','f40'];
-  const weights= [baseW, baseW, baseW, truckW, 0.05];
-
-  let r=Math.random(),ti=0;
-  for(let i=0;i<weights.length;i++){r-=weights[i];if(r<=0){ti=i;break;}}
-  const ct=types[ti];
-
-  // 対向車: 25%確率。トラックは常に同方向。
-  const oncoming = ct !== 'truck' && Math.random() < 0.25;
-
-  const ownSpd = oncoming            ? (70+Math.random()*80)
-               : ct==='truck'        ? (30+Math.random()*40)
-               : ct==='f40'          ? (120+Math.random()*80)
-               :                       (20+Math.random()*100);
-
-  // ── 生成位置は2箇所のみ ──
-  //  ・自車より遅い同方向車 / 対向車: 描画距離の奥から現れて近づく
-  //  ・自車より速い同方向車: 画面の下の外（後方）から現れ、自車を追い越して前へ出ていく
-  //    （自車が停止中でも、後ろから来た車は画面の下端から上へ現れる）
-  let absZ;
-  if(oncoming || ownSpd < player.speed){
-    absZ = cam.pos + DRAW * SEGZ + SEGZ * 2;
-  } else {
-    absZ = cam.pos + carBehindSpawnRelZ(ct);
-  }
-
-  if(traffic.some(c=>Math.abs(c.z-absZ)<SEGZ*1.2))return;
-
-  // 対向車は左車線、同方向車は全レーン
-  const cx = oncoming
-    ? -(0.25 + Math.random()*0.60)
-    :  (Math.random()-0.5)*1.2;
-  const col=ct==='f40'?'#ff40a0':ct==='truck'?'#e08020':NEON[Math.floor(Math.random()*NEON.length)];
-  const avoidsPlayer = !oncoming && ct !== 'truck' && Math.random() < 0.10;
-
-  // heading: 進行方向(rad)。0=前進(Z+)、Math.PI=後退(Z-)。
-  // viewAngle: プレーヤーから見た相対角度(rad)。毎フレーム更新。
-  //   将来の側面描画判定に使用。現時点では計算のみ、描画には未使用。
-  const heading = oncoming ? Math.PI : 0;
-  // passed: 自車を完全に追い越した（追い越された）状態。後方から来る車は最初から true（PASS! を出さない）
-  traffic.push({z:absZ,x:cx,ownSpd,col,carType:ct,oncoming,heading,viewAngle:0,hitTimer:0,avoidsPlayer,
-                passed:(absZ-cam.pos)<PLAYER_Z});
-}
+// 他車の出現は 16i-racing-traffic.js（右側通行・対向車の比率・違反車・重なり防止）
+function spawnCar(){ Traffic.spawn(); }
 
 // ════════════════════════════════════
 // 環境オブジェクト
@@ -474,13 +428,24 @@ function roadsideCenterOffset(fw,halfWidthPx){ return fw*ROAD_EDGE_CLEAR+halfWid
 // ════════════════════════════════════
 // ゲーム制御
 // ════════════════════════════════════
+// プレイを始めたら Auto Drone も自動で始める（デスクトップ・スマホ共通。Auto Drone カードの現在の設定のまま）。
+// すでに再生中なら何もしない（START を再度押すと止まってしまう）。ボタンの処理は非同期で、再生中を示す
+// クラスが付くまでに少し時間がかかるので、短時間の二重呼び出しも防ぐ。
+let _adKickAt=-1e9;
+function ensureAutoDrone(){
+  const now=(typeof performance!=='undefined'&&performance.now)?performance.now():Date.now();
+  if(now-_adKickAt<2000)return;
+  const b=document.getElementById('autoDroneBtn');
+  if(b&&!b.classList.contains('playing')){_adKickAt=now;b.click();}
+}
 function startGame(){
   initSound();
+  ensureAutoDrone();
   mode=MODE.PLAY;
-  game.hp=game.maxHp;game.dist=0;game.hitTimer=0;game.overTimer=0;
-  cam.pos=0;player.x=0;player.xv=0;player.speed=0;player.bank=0;
+  game.hp=game.maxHp;game.dist=0;game.hitTimer=0;game.overTimer=0;game.nextStar=STAR_FIRST_DIST;
+  cam.pos=0;player.x=PLAYER_START_X;player.xv=0;player.speed=0;player.bank=0;player.inv=0;
   player.slip=0;player.slipV=0;player.slideV=0;
-  traffic=[];spawnTick=0;
+  traffic=[];bonusStars=[];spawnTick=0;
   addLog('GAME START!  ↑ACCEL  ↓BRAKE  ←→STEER');
   const gb=document.getElementById('vfdGameBtn');
   if(gb){gb.textContent='DEMO';gb.classList.remove('btn-red');gb.classList.add('btn');}
@@ -488,14 +453,25 @@ function startGame(){
 
 // pushDir: 車体が流れる向き(+1=右 / -1=左)。相手車なら「相手から離れる側」、
 //          路肩なら「中央へ戻る側」を呼び出し側が渡す。未指定/0(真横一致)のみランダム。
-function takeDamage(pushDir){
+// 自車の衝突スリップ（横滑り）。kick={yaw,slide} があればそれを使う（衝突位置・速度・重量で決めた値、16i）。
+// なければ従来の固定量（路肩への接触など）。
+function applyPlayerKick(dir,kick){
+  if(kick){player.slipV=kick.yaw;player.slideV=kick.slide;}
+  else{player.slipV=dir*SLIP_KICK;player.slideV=dir*SLIDE_KICK;}
+}
+function takeDamage(pushDir,kick){
   if(game.hitTimer>0)return;
+  const dir=(pushDir===1||pushDir===-1)?pushDir:((Math.random()<0.5)?1:-1);
+  if(player.inv>0){                 // 無敵（星）: ハートは減らない。揺れもごく小さく
+    game.hitTimer=30;
+    applyPlayerKick(dir,kick?{yaw:kick.yaw*0.25,slide:kick.slide*0.25}:{yaw:dir*SLIP_KICK*0.25,slide:dir*SLIDE_KICK*0.25});
+    playCrashSound();
+    return;
+  }
   playCrashSound();
   game.hp--;game.hitTimer=90;
   // 衝突スリップ: 横転ではなく、ヨー(向き)の振れと横への流れだけ
-  const dir=(pushDir===1||pushDir===-1)?pushDir:((Math.random()<0.5)?1:-1);
-  player.slipV=dir*SLIP_KICK;
-  player.slideV=dir*SLIDE_KICK;
+  applyPlayerKick(dir,kick);
   addLog(`DAMAGE! HP:${'♥'.repeat(Math.max(0,game.hp))}`);
   if(game.hp<=0)endGame();
 }
@@ -507,9 +483,9 @@ function endGame(){
   if(game.dist>=game.best&&game.dist>0)addLog('★ NEW RECORD!');
   setTimeout(()=>{
     mode=MODE.DEMO;
-    player.speed=0;player.x=0;player.xv=0;player.bank=0;
+    player.speed=0;player.x=PLAYER_START_X;player.xv=0;player.bank=0;player.inv=0;
     player.slip=0;player.slipV=0;player.slideV=0;
-    traffic=[];
+    traffic=[];bonusStars=[];
     const gb=document.getElementById('vfdGameBtn');
     if(gb){gb.textContent='PLAY';gb.classList.add('btn-red');gb.classList.remove('btn');}
   },3500);

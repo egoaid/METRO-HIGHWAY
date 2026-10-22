@@ -37,7 +37,11 @@ and nothing you make is sent anywhere.
   as a tempo-synced visual when you're not playing it. Street trees that
   catch the headlights, street lamps, and the occasional traffic signal.
   The skyline, trees and mountains are holograms that glitch now and then,
-  and the mountains slowly change colour.
+  and the mountains slowly change colour. Traffic keeps to the right (some
+  cars break the rule), you can cross into the oncoming lane, cars crash into
+  each other realistically (heavy trucks barely budge), and past 5 km bonus
+  stars drop on the road — grab one for a few seconds of invincibility.
+  Playing starts Auto Drone on every device.
   On a phone it plays fullscreen with a single virtual joystick, and Auto
   Drone starts along with the game.
 

@@ -4,7 +4,7 @@
 // ・フルスクリーン中だけ、画面全体がジョイスティックの操作面になる（浮動式: 触れた位置が中心）
 //     左右 = ステア（アナログ） / 上 = アクセル / 下 = ブレーキ
 // ・プレイ開始(PLAYボタン or フルスクリーン中の画面タップ)で、フルスクリーン化 → ゲーム開始 →
-//   Auto Drone の START を押す（Auto Drone カードの「現在の設定」のまま開始する）
+//   Auto Drone も開始する（startGame 内。Auto Drone カードの「現在の設定」のまま）
 // ・フルスクリーンを閉じたらデモ表示に戻す（スマホのみ）
 // IIFE で包み、公開は window.VfdTouch のみ。
 // ════════════════════════════════════════════════
@@ -83,15 +83,9 @@ window.VfdTouch = (function(){
   exitBtn.addEventListener('click', ()=>{ if(window.VfdFullscreen) VfdFullscreen.exit(); });
 
   // ── プレイ開始: フルスクリーン → ゲーム開始 → Auto Drone ──
-  function startAutoDroneIfIdle(){
-    const btn = document.getElementById('autoDroneBtn');
-    // 実行中は 'playing' クラスが付く（17-auto-drone-engine.js）。停止中のときだけ START を押す
-    if(btn && !btn.classList.contains('playing')) btn.click();
-  }
   function startMobilePlay(){
     if(window.VfdFullscreen && !VfdFullscreen.isActive()) VfdFullscreen.enter();
-    startGame();
-    startAutoDroneIfIdle();
+    startGame();   // Auto Drone も startGame() が開始する（デスクトップと共通。16a の ensureAutoDrone）
   }
 
   // フルスクリーンを閉じたら、スマホではデモ表示に戻す（ゲームを裏で続けない）

@@ -229,21 +229,47 @@ window.Roadside = (function(){
   // ════════════════════════════════
   // 信号機（片持ち式: 路側の支柱 + 道路を横切るマストアーム + 灯器2基）
   // ════════════════════════════════
-  // 12秒周期: 青 0〜5.5s / 黄 5.5〜7s / 赤 7〜12s。位相は信号ごとに異なる。
-  // 灯器は手前を向き、左から 青・黄・赤 の横並び。
+  // ・右側通行: 自車側の車線（道路の右半分）の上の灯器は手前(自車)を向き、左から 青・黄・赤 の横並び。
+  //   対向車線（左半分）の上の灯器は対向車へ向けて設置されているので、こちらからは「裏面」が見える。
+  // ・信号は常に青（赤・黄にはならない）。
   const SIG_COL = [[53,255,154], [255,200,58], [255,48,80]];
+  function signalState(){ return 0; }     // 常に青
 
-  function signalState(tMs, phase){
-    const c = (((tMs*0.001 + phase) % 12) + 12) % 12;
-    return c < 5.5 ? 0 : c < 7 ? 1 : 2;
+  // 灯器1基。facing='front': 自車側の灯器（灯火が見える）/ 'back': 対向車線の灯器（裏面が見える）
+  function drawSignalHead(g, hx, armY, hw, hh, u, facing){
+    if(hh < 2.5 && facing === 'back') return;          // 遠方の裏面は点にもならない
+    if(facing === 'front'){
+      if(hh >= 2.5){
+        g.fillStyle = '#12161c'; g.fillRect(hx - hw/2, armY, hw, hh);
+        g.strokeStyle = '#2a303a'; g.lineWidth = Math.max(0.5, 8*u);
+        g.strokeRect(hx - hw/2, armY, hw, hh);
+      }
+      for(let i = 0; i < 3; i++){
+        const lx = hx + (i-1)*hw*0.31, ly = armY + hh*0.5, lr = Math.max(0.8, hh*0.34);
+        const on = (i === 0);                           // 常に青
+        if(hh >= 2.5 || on){
+          g.fillStyle = on ? css(SIG_COL[i]) : css(mix([10,14,18], SIG_COL[i], 0.10));
+          g.beginPath(); g.arc(lx, ly, lr, 0, Math.PI*2); g.fill();
+        }
+        if(on) glow(g, 'sig'+i, SIG_COL[i], 0.75, 0.30, lx, ly, Math.max(4, Math.min(90, hh*2.2)));
+      }
+    }else{
+      // 裏面: 無地の背面板 + 取り付け金具 + 縁。灯火も光暈もない（光は向こう側へ出ている）
+      g.fillStyle = '#161b22'; g.fillRect(hx - hw/2, armY, hw, hh);
+      g.fillStyle = '#222934';                           // 背面板の段差（面の立体感）
+      g.fillRect(hx - hw*0.46, armY + hh*0.08, hw*0.92, hh*0.84);
+      g.fillStyle = '#10141a';
+      g.fillRect(hx - hw*0.08, armY - hh*0.10, hw*0.16, hh*0.14);   // アームとの取り付け金具
+      g.strokeStyle = '#2f3745'; g.lineWidth = Math.max(0.5, 8*u);
+      g.strokeRect(hx - hw/2, armY, hw, hh);
+    }
   }
 
-  function drawSignal(g, o, fc, fy, fw, sc, tMs){
+  function drawSignal(g, o, fc, fy, fw, sc){
     const u = sc*(W*0.5), uy = sc*(H*0.5);
     const bx = fc + o.side*fw*1.06;
     const armY = fy - 2050*uy;
-    const armEnd = fc - o.side*fw*0.30;
-    const st = signalState(tMs, o.phase);
+    const armEnd = fc - o.side*fw*0.64;                 // 対向車線の上まで届くアーム
     // 支柱
     const pw = Math.max(1, 56*u);
     g.fillStyle = STEEL;
@@ -254,25 +280,10 @@ window.Roadside = (function(){
     // マストアーム
     g.strokeStyle = STEEL; g.lineWidth = Math.max(0.9, 40*u);
     g.beginPath(); g.moveTo(bx, armY); g.lineTo(armEnd, armY); g.stroke();
-    // 灯器
-    [0.42, -0.18].forEach(rel => {
-      const hx = fc + fw*rel*o.side;
-      const hw = 720*u, hh = 250*uy;  // 実物より大きめ（遠くからでも信号と分かるように誇張）
-      if(hh >= 2.5){
-        g.fillStyle = '#12161c'; g.fillRect(hx - hw/2, armY, hw, hh);
-        g.strokeStyle = '#2a303a'; g.lineWidth = Math.max(0.5, 8*u);
-        g.strokeRect(hx - hw/2, armY, hw, hh);
-      }
-      for(let i = 0; i < 3; i++){
-        const lx = hx + (i-1)*hw*0.31, ly = armY + hh*0.5, lr = Math.max(0.8, hh*0.34);
-        const on = (i === st);
-        if(hh >= 2.5 || on){
-          g.fillStyle = on ? css(SIG_COL[i]) : css(mix([10,14,18], SIG_COL[i], 0.10));
-          g.beginPath(); g.arc(lx, ly, lr, 0, Math.PI*2); g.fill();
-        }
-        if(on) glow(g, 'sig'+i, SIG_COL[i], 0.75, 0.30, lx, ly, Math.max(4, Math.min(90, hh*2.2)));
-      }
-    });
+    // 灯器: 自車側(右半分の車線の上)は手前向き、対向車線(左半分)の上は裏面
+    const hw = 720*u, hh = 250*uy;   // 実物より大きめ（遠くからでも信号と分かるように誇張）
+    drawSignalHead(g, fc + fw*0.44*o.side, armY, hw, hh, u, 'front');
+    drawSignalHead(g, fc - fw*0.44*o.side, armY, hw, hh, u, 'back');
   }
 
   // ════════════════════════════════
@@ -307,5 +318,5 @@ window.Roadside = (function(){
     g.fill();
   }
 
-  return { collectLights, lightAt, drawTree, drawLamp, drawPool, drawSignal, drawPost, drawCrosswalk, signalState };
+  return { collectLights, lightAt, drawTree, drawLamp, drawPool, drawSignal, drawPost, drawCrosswalk, signalState, glow };
 })();
