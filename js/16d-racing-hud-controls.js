@@ -21,12 +21,19 @@ function drawHUD(g,bpm){
 function drawGameHUD(g){
   const fs=Math.round(H*0.032);
   g.shadowColor='#5df0c8';g.shadowBlur=4;
-  // HP ハート
+  // HP ハート（0.5刻み: 半分のハートは左半分だけ赤く塗る）。ハートを取った直後は一瞬光る
+  g.font=`${Math.round(H*0.048)}px serif`;
+  if(game.healT>0){g.shadowColor='#ff3050';g.shadowBlur=6+18*Math.min(1,game.healT/0.7);}
   for(let i=0;i<game.maxHp;i++){
-    g.fillStyle=i<game.hp?'#ff3050':'rgba(255,48,80,0.22)';
-    g.font=`${Math.round(H*0.048)}px serif`;
-    g.fillText('♥',W*0.03+i*(H*0.055),H*0.252);
+    const hx=W*0.03+i*(H*0.055), hy=H*0.252, fill=Math.max(0,Math.min(1,game.hp-i));
+    g.fillStyle=fill>=1?'#ff3050':'rgba(255,48,80,0.22)';
+    g.fillText('♥',hx,hy);
+    if(fill>0&&fill<1){
+      g.save();g.beginPath();g.rect(hx,hy-H*0.06,g.measureText('♥').width*fill,H*0.08);g.clip();
+      g.fillStyle='#ff3050';g.fillText('♥',hx,hy);g.restore();
+    }
   }
+  g.shadowColor='#5df0c8';g.shadowBlur=4;
   g.font=`${fs}px 'Share Tech Mono',monospace`;
   g.fillStyle='#5df0c8';g.textAlign='right';
   g.fillText(`${(game.dist/1000).toFixed(2)}km`,W-W*0.03,H*0.215);

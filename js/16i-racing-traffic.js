@@ -6,6 +6,9 @@
 //  ・一部(ROGUE_P=12%)は違反車: 反対側の半分を走り、2〜4秒ごとに自由に車線を変える。
 //    普通の車も、ごくまれに自分の側の中で車線を変える。
 //  ・対向車の比率は 40% を目標に出現を調整する（少なすぎ/多すぎにならない）。
+//  ・交通量（v1.4.0）: 出現は「時間」で決める（CFG.gap〜gap+jitter 秒に1台まで。端末のフレームレートに左右されない）。
+//    同時に道路にいる台数の上限は CFG.maxBase + 距離レベル×CFG.maxPerLv。ハートで回復しながら長く遊べる程度に、
+//    何も避けずに走り続けても衝突が毎秒のようには起きない量にしてある。
 //  ・他車同士は重ならない: 出現時に空きを確認 / 前の車に合わせて減速 / 車線変更は空いている時だけ。
 //    それでも触れた場合（違反車どうし等）は衝突として、揺れ・減速を起こし、重ならない位置へ離す。
 //  ・衝突の揺れ（自車↔他車、他車↔他車 共通: kickCar）は次で変わる:
@@ -23,6 +26,8 @@ window.Traffic = (function(){
   const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
   const rr = (a, b) => a + Math.random()*(b - a);
   const ROGUE_P = 0.12, ONC_TARGET = 0.50;     // 対向車は道路上の約4割を目標（出現率の目標は高めに置く: 対向車は短時間で通り過ぎるため）
+  // 交通量の設定（16b のループが出現間隔 gap/jitter を、spawn が台数の上限 maxBase/maxPerLv を使う）
+  const CFG = { gap:1.6, jitter:1.0, maxBase:6, maxPerLv:1 };
   const HW_P = 0.164;                          // 自車の半幅(道路単位) = 312.5*1.05/ROADW
   const ALL_LANES = [-0.66, -0.22, 0.22, 0.66];
   const E_REST = 0.2;                          // 反発係数
@@ -59,7 +64,7 @@ window.Traffic = (function(){
     // 距離に応じた難易度レベル（0〜4）
     const distKm = game.dist/1000;
     const lv = distKm < 4 ? 0 : distKm < 6 ? 1 : distKm < 9 ? 2 : distKm < 13 ? 3 : 4;
-    const maxCars = 11 + lv*2;
+    const maxCars = CFG.maxBase + lv*CFG.maxPerLv;
     if(traffic.length >= maxCars) return;
 
     // 車種（トラックは距離とともに少し増える。f40 は5%）
@@ -304,7 +309,7 @@ window.Traffic = (function(){
     });
   }
 
-  return { spawn, update, visYaw, massFactor, speedFactor, kickFor, exchange, overlapAny: list => {
+  return { spawn, update, visYaw, CFG, massFactor, speedFactor, kickFor, exchange, overlapAny: list => {
     for(let i = 0; i < list.length; i++) for(let j = i + 1; j < list.length; j++){
       ensure(list[i]); ensure(list[j]); const p = pen(list[i], list[j], 0.92); if(p.px > 0 && p.pz > 0) return [list[i], list[j]];
     } return null; }, MASS };

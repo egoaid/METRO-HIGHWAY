@@ -125,6 +125,21 @@ function playStarSound(){
     osc.start(t0); osc.stop(t0+0.30);
   });
 }
+function playHeartSound(){
+  if(!sndReady) return;
+  // ハートを取った時: やわらかい2音（A5 → E6）。星の明るいアルペジオより控えめ
+  const now = sndCtx.currentTime;
+  [880,1318.5].forEach((f,i)=>{
+    const osc = sndCtx.createOscillator(), gn = sndCtx.createGain();
+    osc.type='sine'; osc.frequency.value=f;
+    const t0 = now + i*0.09;
+    gn.gain.setValueAtTime(0.0001,t0);
+    gn.gain.exponentialRampToValueAtTime(0.16,t0+0.02);
+    gn.gain.exponentialRampToValueAtTime(0.001,t0+0.30);
+    osc.connect(gn); gn.connect(sndCtx.destination);
+    osc.start(t0); osc.stop(t0+0.32);
+  });
+}
 function playCrashSound(){
   if(!sndReady) return;
   const now = sndCtx.currentTime;

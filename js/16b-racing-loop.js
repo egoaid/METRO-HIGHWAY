@@ -6,7 +6,7 @@ let demoLane=0.66, demoLaneT=0, demoTgtS=0.66, demoVx=0;
 function frame(t){
   if(!enabled)return;
   rafId=requestAnimationFrame(frame);
-  if(typeof Roadside==='undefined'||typeof Hologram==='undefined'||typeof SpeedFx==='undefined'||typeof Traffic==='undefined'||typeof StarBonus==='undefined')return; // 16f/16h/16i/16j が読み込み中の間は描かない
+  if(typeof Roadside==='undefined'||typeof Hologram==='undefined'||typeof SpeedFx==='undefined'||typeof Traffic==='undefined'||typeof StarBonus==='undefined'||typeof HeartBonus==='undefined')return; // 16f/16h/16i/16j/16k が読み込み中の間は描かない
   if(t-lastT<33)return;
   const dt=Math.min((t-lastT)/1000,0.08);
   lastT=t;
@@ -130,8 +130,10 @@ function frame(t){
   }
 
   // ══ 交通スポーン ══
-  spawnTick++;
-  if(spawnTick>Math.max(8,24-(bpm-60)*0.05)){spawnTick=0;spawnCar();}
+  // 出現は時間で決める（秒）。以前はフレーム数だったため、端末が重くてフレームが落ちると交通量まで減って、速度感が端末ごとに違った。
+  // 次の出現までの間隔 = Traffic.CFG.gap 〜 gap+jitter 秒（spawnTick は経過秒。負の値からのカウントで揺らぎを付ける）
+  spawnTick+=dt;
+  if(spawnTick>Traffic.CFG.gap){spawnTick=-Math.random()*Traffic.CFG.jitter;spawnCar();}
 
   // ══ 交通更新 ══
   // 右側通行・追従・車線変更・違反車・衝突と揺れ・追い越し/消滅は 16i-racing-traffic.js
@@ -139,6 +141,9 @@ function frame(t){
 
   // ══ 星のボーナス・無敵 ══（16j-racing-star.js）
   if(mode===MODE.PLAY) StarBonus.update(dt,t);
+
+  // ══ ハートの回復アイテム ══（16k-racing-heart.js）
+  if(mode===MODE.PLAY) HeartBonus.update(dt,t);
 
   updateEngineSound(player.speed, SPD_MAX);
   drawScene(t,bpm);
@@ -454,6 +459,11 @@ function drawWorld(t,bpm){
       if(relZ > DRAW*SEGZ || relZ < 200) return;
       items.push({k:'star', relZ, star:st});
     });
+    HeartBonus.items().forEach(ht=>{
+      const relZ = ht.z - cam.pos;
+      if(relZ > DRAW*SEGZ || relZ < 200) return;
+      items.push({k:'heart', relZ, heart:ht});
+    });
     items.sort((a,b)=>b.relZ-a.relZ);                       // 遠→近
     items.forEach(it=>(it.relZ < PLAYER_Z ? nearList : farList).push(it));
     const drawCars = list => list.forEach(it=>{
@@ -464,6 +474,7 @@ function drawWorld(t,bpm){
       const cxAcc  = sliceMap.has(nIdx) ? sliceMap.get(nIdx) : 0;
       try {
         if(it.k==='star'){ StarBonus.draw(g, it.star, relZ, cxAcc, t); return; }
+        if(it.k==='heart'){ HeartBonus.draw(g, it.heart, relZ, cxAcc, t); return; }
         const car = it.car;
         // 向き = 基本の向き + 衝突の揺れ + 車線変更の舵（Traffic.visYaw）
         drawTrafficCar(g, car.x * ROADW, relZ, cxAcc,

@@ -69,7 +69,8 @@ const CAM_SCALE = 14;
 // ════════════════════════════════════
 const MODE={DEMO:'demo',PLAY:'play',OVER:'over'};
 let mode=MODE.DEMO;
-const game={hp:3,maxHp:3,dist:0,best:0,hitTimer:0,overTimer:0,nextStar:0};
+// hp は 0.5 刻み（ダメージ=1、ハート取得=+0.5）。maxHp を超えない。
+const game={hp:3,maxHp:3,dist:0,best:0,hitTimer:0,overTimer:0,nextStar:0,nextHeart:0,healT:0};
 
 // ── 交通ルールと星のボーナス ──
 // 右側通行: 自車と同方向の車線は道路の右半分、対向車線は左半分（車線の中央。道路は4車線: ±0.22, ±0.66）。
@@ -82,6 +83,12 @@ const STAR_FIRST_DIST=5000;
 const INV_TIME=8;                // 無敵時間(秒)
 const INV_BOOST=2.2;             // 無敵中に衝突された他車の揺れの倍率
 let bonusStars=[];
+// 道路にときどき落ちているハート（16k-racing-heart.js）。取ると HP が HEART_HEAL(=ハート半分)回復。
+// 出現は 約 HEART_EVERY(m) に1個（1km に1個程度）。最初の1個は HEART_FIRST(m) 付近。
+const HEART_HEAL=0.5;
+const HEART_FIRST=[400,800];     // 最初のハートまでの距離の範囲(m)
+const HEART_EVERY=[800,1200];    // 次のハートまでの距離の範囲(m)（平均 1000m）
+let bonusHearts=[];
 const cam={pos:0};
 const player={x:0,xv:0,speed:0,bank:0,
   inv:0,     // 無敵の残り時間(秒)。星を取ると INV_TIME
@@ -442,10 +449,10 @@ function startGame(){
   initSound();
   ensureAutoDrone();
   mode=MODE.PLAY;
-  game.hp=game.maxHp;game.dist=0;game.hitTimer=0;game.overTimer=0;game.nextStar=STAR_FIRST_DIST;
+  game.hp=game.maxHp;game.dist=0;game.hitTimer=0;game.overTimer=0;game.nextStar=STAR_FIRST_DIST;game.nextHeart=HEART_FIRST[0]+Math.random()*(HEART_FIRST[1]-HEART_FIRST[0]);
   cam.pos=0;player.x=PLAYER_START_X;player.xv=0;player.speed=0;player.bank=0;player.inv=0;
   player.slip=0;player.slipV=0;player.slideV=0;
-  traffic=[];bonusStars=[];spawnTick=0;
+  traffic=[];bonusStars=[];bonusHearts=[];spawnTick=0;
   addLog('GAME START!  ↑ACCEL  ↓BRAKE  ←→STEER');
   const gb=document.getElementById('vfdGameBtn');
   if(gb){gb.textContent='DEMO';gb.classList.remove('btn-red');gb.classList.add('btn');}
@@ -459,6 +466,8 @@ function applyPlayerKick(dir,kick){
   if(kick){player.slipV=kick.yaw;player.slideV=kick.slide;}
   else{player.slipV=dir*SLIP_KICK;player.slideV=dir*SLIDE_KICK;}
 }
+// ハートの表示文字列（半分は ½）
+function hpText(){const h=Math.max(0,game.hp);return '♥'.repeat(Math.floor(h))+(h%1?'½':'');}
 function takeDamage(pushDir,kick){
   if(game.hitTimer>0)return;
   const dir=(pushDir===1||pushDir===-1)?pushDir:((Math.random()<0.5)?1:-1);
@@ -472,7 +481,7 @@ function takeDamage(pushDir,kick){
   game.hp--;game.hitTimer=90;
   // 衝突スリップ: 横転ではなく、ヨー(向き)の振れと横への流れだけ
   applyPlayerKick(dir,kick);
-  addLog(`DAMAGE! HP:${'♥'.repeat(Math.max(0,game.hp))}`);
+  addLog(`DAMAGE! HP:${hpText()}`);
   if(game.hp<=0)endGame();
 }
 
@@ -485,7 +494,7 @@ function endGame(){
     mode=MODE.DEMO;
     player.speed=0;player.x=PLAYER_START_X;player.xv=0;player.bank=0;player.inv=0;
     player.slip=0;player.slipV=0;player.slideV=0;
-    traffic=[];bonusStars=[];
+    traffic=[];bonusStars=[];bonusHearts=[];
     const gb=document.getElementById('vfdGameBtn');
     if(gb){gb.textContent='PLAY';gb.classList.add('btn-red');gb.classList.remove('btn');}
   },3500);

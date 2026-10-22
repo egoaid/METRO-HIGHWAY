@@ -403,36 +403,63 @@ function _facesCpe() {
   ];
 }
 
-const _VTRK = {
-  BRL:[-1.10, 0.00, 0.00], BRR:[1.10, 0.00, 0.00], BFL:[-1.10, 0.00, 4.50],
-  BFR:[1.10, 0.00, 4.50], BHL:[-1.12, 0.22, 0.00], BHR:[1.12, 0.22, 0.00],
-  BHFL:[-1.12, 0.22, 4.50], BHFR:[1.12, 0.22, 4.50], CTL:[-1.10, 1.69, 0.00],
-  CTR:[1.10, 1.69, 0.00], CTFL:[-1.10, 1.69, 4.50], CTFR:[1.10, 1.69, 4.50],
-  BML:[-1.10, 0.00, 2.25], BMR:[1.10, 0.00, 2.25], BHML:[-1.12, 0.22, 2.25],
-  BHMR:[1.12, 0.22, 2.25], CTML:[-1.10, 1.69, 2.25], CTMR:[1.10, 1.69, 2.25],
-};
+// トラック（v1.4.0 で作り直し）。構造は3つの部品に分かれる:
+//   フレーム（シャーシ・黒）: 全長。幅 FW。床と側面と前後の面だけ。
+//   上物（ボディ・荷台コンテナ）: 後ろ側 z=0〜ZC。高さ YC（車の最高点）。幅 CW。
+//   キャビン（運転席）: 前側 z=ZC〜ZF。高さ YK（上物より低い）。幅 KW。
+//   3つの幅は同じにして、側面が同一平面で隣り合うようにしてある（幅を変えて奥まらせると、
+//   フレームの側面が上物の側面と画面上で重なり、前後の描画順だけでは正しく決まらなくなる。ray-cast で確認済み）。
+//   キャビンと上物の境目は、キャビン側面の後端に暗い継ぎ目（seam）のデカールを置いて表す。
+//     前面は平らな下半分（グリル+ヘッドライト）と、後ろへ傾いたフロントガラス。
+// 前面を三角形の扇で作ると縁取りが斜めの線になるので、全ての面を平面の四角形（側面だけ五角形）にした。
+// ローカル座標: X=右±, Y=上(0=地面), Z=前方(0=後端, ZF=前端)。後端 BRL/BRR は影・光暈の基準点。
+const _TRK = { FW:1.12, CW:1.12, KW:1.12, YF:0.28, YWS:0.82, YK:1.35, YC:1.69, ZM:1.575, ZC:3.15, ZKR:4.28, ZF:4.50, ZFM:2.25 };
+const _VTRK = (() => {
+  const T = _TRK, V = {};
+  const both = (name, x, y, z) => { V[name + 'L'] = [-x, y, z]; V[name + 'R'] = [x, y, z]; };
+  // フレーム: 底 B / 上 T × 後 R / 中 M / 前 F
+  both('BR', T.FW, 0, 0);       both('BM', T.FW, 0, T.ZFM);     both('BF', T.FW, 0, T.ZF);
+  both('TR', T.FW, T.YF, 0);    both('TM', T.FW, T.YF, T.ZFM);  both('TF', T.FW, T.YF, T.ZF);
+  // 上物: 底 GB / 上 GT × 後 R / 中 M / 前 F
+  both('GBR', T.CW, T.YF, 0);   both('GBM', T.CW, T.YF, T.ZM);  both('GBF', T.CW, T.YF, T.ZC);
+  both('GTR', T.CW, T.YC, 0);   both('GTM', T.CW, T.YC, T.ZM);  both('GTF', T.CW, T.YC, T.ZC);
+  // キャビン: 後下 KB / 前下 KF / 前面の上端=ガラスの下端 KM / 屋根の前端 KT / 屋根の後端 KU
+  both('KB', T.KW, T.YF, T.ZC); both('KF', T.KW, T.YF, T.ZF);   both('KM', T.KW, T.YWS, T.ZF);
+  both('KT', T.KW, T.YK, T.ZKR); both('KU', T.KW, T.YK, T.ZC);
+  return V;
+})();
 
+let _TRK_FACES = null;
 function _facesTrk() {
-  return [
-    {k:['BRR','BRL','BHL','BHR'], ny:0, nz:1, t:'body', z:0.0},
-    {k:['BHR','BHL','CTL','CTR'], ny:0, nz:1, t:'body', z:0.1},
-    {k:['CTR','CTL','CTML','CTMR'], ny:1, nz:0, t:'roof', z:1.1},
-    {k:['CTMR','CTML','CTFL','CTFR'], ny:1, nz:0, t:'roof', z:3.4},
-    {k:['BFL','BHFL','BHML','BML'], ny:0, nz:0, t:'sideL', z:3.4},
-    {k:['BML','BHML','BHL','BRL'], ny:0, nz:0, t:'sideL', z:1.1},
-    {k:['BHFL','CTFL','CTML','BHML'], ny:0, nz:0, t:'sideL', z:3.4},
-    {k:['BHML','CTML','CTL','BHL'], ny:0, nz:0, t:'sideL', z:1.1},
-    {k:['BHR','BHMR','BMR','BRR'], ny:0, nz:0, t:'sideR', z:1.1},
-    {k:['BHMR','BHFR','BFR','BMR'], ny:0, nz:0, t:'sideR', z:3.4},
-    {k:['CTR','CTMR','BHMR','BHR'], ny:0, nz:0, t:'sideR', z:1.1},
-    {k:['CTMR','CTFR','BHFR','BHMR'], ny:0, nz:0, t:'sideR', z:3.4},
-    {k:['BRR','BMR','BML','BRL'], ny:-1, nz:0, t:'floor', z:1.1},
-    {k:['BMR','BFR','BFL','BML'], ny:-1, nz:0, t:'floor', z:3.4},
-    {k:['BFL','BFR','BHFR'], ny:0, nz:-1, t:'body', z:4.5},
-    {k:['BFL','BHFR','CTFR'], ny:0, nz:-1, t:'body', z:3.5},
-    {k:['BFL','CTFR','CTFL'], ny:0, nz:-1, t:'body', z:4.5},
-    {k:['BFL','CTFL','BHFL'], ny:0, nz:-1, t:'body', z:3.5},
+  if (_TRK_FACES) return _TRK_FACES;
+  const V = _VTRK;
+  // 巻き順は Newell 法の法線が外向きになるように自動で揃える（手書きの順序ミスを防ぐ）
+  const F = (k, out, t, z) => {
+    const n = _newellModel(k.map(q => V[q]));
+    if (n[0]*out[0] + n[1]*out[1] + n[2]*out[2] < 0) k = k.slice().reverse();
+    return { k, ny: out[1], nz: out[2], t, z };
+  };
+  const X = [1,0,0], NX = [-1,0,0], UP = [0,1,0], DN = [0,-1,0], FR = [0,0,1], RE = [0,0,-1];
+  _TRK_FACES = [
+    // フレーム（シャーシ）
+    F(['BRR','BMR','BML','BRL'], DN, 'floor', 0.8),  F(['BMR','BFR','BFL','BML'], DN, 'floor', 3.4),
+    F(['BRR','TRR','TMR','BMR'], X,  'frame', 0.8),  F(['BMR','TMR','TFR','BFR'], X,  'frame', 3.4),
+    F(['BRL','TRL','TML','BML'], NX, 'frame', 0.8),  F(['BML','TML','TFL','BFL'], NX, 'frame', 3.4),
+    F(['BRR','BRL','TRL','TRR'], RE, 'frame', 0.0),  F(['BFL','BFR','TFR','TFL'], FR, 'frame', 4.5),
+    // 上物（荷台）
+    F(['GBRR','GBRL','GTRL','GTRR'], RE, 'body', 0.0),
+    F(['GTRL','GTRR','GTMR','GTML'], UP, 'roof', 0.8), F(['GTML','GTMR','GTFR','GTFL'], UP, 'roof', 2.4),
+    F(['GBRR','GBMR','GTMR','GTRR'], X,  'sideR', 0.8), F(['GBMR','GBFR','GTFR','GTMR'], X,  'sideR', 2.4),
+    F(['GBRL','GBML','GTML','GTRL'], NX, 'sideL', 0.8), F(['GBML','GBFL','GTFL','GTML'], NX, 'sideL', 2.4),
+    F(['GBFL','GBFR','GTFR','GTFL'], FR, 'body', 3.15),
+    // キャビン（運転席）
+    F(['KBR','KFR','KMR','KTR','KUR'], X,  'sideR', 3.8),
+    F(['KBL','KFL','KML','KTL','KUL'], NX, 'sideL', 3.8),
+    F(['KUL','KUR','KTR','KTL'], UP, 'roof', 3.7),
+    F(['KML','KMR','KTR','KTL'], [0, 0.4, 1], 'body', 4.4),     // フロントガラスの枠（ガラスはデカール）
+    F(['KFL','KFR','KMR','KML'], FR, 'body', 4.5),              // 前面の下半分（グリル・ヘッドライト）
   ];
+  return _TRK_FACES;
 }
 // ── 面タイプ別描画 ──
 // camPts: カメラ空間座標マップ（カリング用）
@@ -477,6 +504,10 @@ function _drawFace(g, camPts, face, bodyCol, glowCol, cxAccPx) {
     case 'floor':
       _poly(g, fp, 'rgb(4,6,10)', null, 0);
       break;
+    case 'frame':
+      // トラックのシャーシ: 暗い無彩色（車体色の上物・キャビンと見分けがつく）
+      _poly(g, fp, 'rgb(14,18,26)', _hexA(glowCol, 0.12), lw * 0.6);
+      break;
   }
 }
 
@@ -496,6 +527,9 @@ const _DECAL_STYLE = {
   head:   { fill:'rgb(255,246,216)', glow:'#ffffaa' },
   headHi: { fill:'rgb(255,255,255)', glow:null },
   backup: { fill:'rgb(255,255,210)', glow:'#ffffff' },
+  glass:  { fill:'rgb(24,42,72)',    glow:null },      // フロントガラス・側面の窓（不透明。背景から離れた色）
+  grille: { fill:'rgb(8,12,18)',     glow:null },      // トラックのグリル
+  seam:   { fill:'rgb(6,9,14)',      glow:null },      // トラックのキャビンと上物の継ぎ目
 };
 function _lerp3(a, b, t) { return [a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t]; }
 function _newellModel(P) {
@@ -531,19 +565,35 @@ function _decalsOf(carType) {
   if (_DECAL_CACHE[carType]) return _DECAL_CACHE[carType];
   let out;
   if (carType === 'truck') {
-    // 後面: コンテナ後面の下部にテール/バックランプ/ナンバー
-    out = _hostDecals(_VTRK, ['BHR','BHL','CTL','CTR'], [
+    const V = _VTRK, T = _TRK, FACES = _facesTrk();
+    // 面の頂点の並びは _facesTrk が外向きに揃えて決めるので、デカールの母面キーはその並びに合わせる
+    const hostKey = ks => { const set = ks.slice().sort().join(); return FACES.find(f => f.k.slice().sort().join() === set).k.join(','); };
+    const onHost = (ks, specs) => { const hk = hostKey(ks); return _hostDecals(V, ks, specs).map(d => (d.hosts = [hk], d)); };
+    // 後面: 上物の後面の下部にテール/バックランプ/ナンバー
+    out = onHost(['GBRR','GBRL','GTRL','GTRR'], [
       ['tail',   .03,.17, .02,.10], ['tail',   .83,.97, .02,.10],
       ['tailHi', .03,.09, .05,.10], ['tailHi', .91,.97, .05,.10],
       ['backup', .46,.54, .03,.08],
       ['plate',  .37,.63, .13,.29],
     ]);
-    // 前面: z=4.5 の平面（前面は三角形4枚）に左右ヘッドライト
-    const fh = ['BFL,BFR,BHFR','BFL,BHFR,CTFR','BFL,CTFR,CTFL','BFL,CTFL,BHFL'];
-    const fz = _VTRK.BFL[2], up = [0,0,1];
-    const q = (x0,x1,y0,y1) => [[x0,y0,fz],[x1,y0,fz],[x1,y1,fz],[x0,y1,fz]];
-    out.push(_mkDecal('head',   fh, up, q(-1.00,-0.70, .40,.62)), _mkDecal('head',   fh, up, q(0.70,1.00, .40,.62)),
-             _mkDecal('headHi', fh, up, q(-0.94,-0.78, .46,.58)), _mkDecal('headHi', fh, up, q(0.78,0.94, .46,.58)));
+    // 前面（キャビン）: 下半分にグリルと左右のヘッドライト、上にフロントガラス
+    out = out.concat(onHost(['KFL','KFR','KMR','KML'], [
+      ['grille', .33,.67, .18,.82],
+      ['head',   .05,.27, .24,.76], ['head',   .73,.95, .24,.76],
+      ['headHi', .08,.17, .34,.66], ['headHi', .83,.92, .34,.66],
+    ]));
+    out = out.concat(onHost(['KML','KMR','KTR','KTL'], [
+      ['glass',  .05,.95, .12,.88],
+    ]));
+    // 側面の窓: キャビン側面（五角形）の平面 x=±KW 上。傾いた前縁の内側に収まる長方形
+    const sideKeys = { R:['KBR','KFR','KMR','KTR','KUR'], L:['KBL','KFL','KML','KTL','KUL'] };
+    for (const sd of ['R','L']) {
+      const x = (sd === 'R' ? 1 : -1) * T.KW, o = [sd === 'R' ? 1 : -1, 0, 0];
+      const y0 = 0.88, y1 = 1.27, z0 = 3.45, z1 = 4.12;
+      out.push(_mkDecal('glass', [hostKey(sideKeys[sd])], o, [[x,y0,z0],[x,y0,z1],[x,y1,z1],[x,y1,z0]]));
+      // キャビンと上物の継ぎ目（キャビン側面の後端に沿った細い暗い帯）
+      out.push(_mkDecal('seam', [hostKey(sideKeys[sd])], o, [[x,T.YF,T.ZC],[x,T.YF,T.ZC+0.07],[x,T.YK,T.ZC+0.07],[x,T.YK,T.ZC]]));
+    }
   } else {
     const V = { f40:_VF40, sedan:_VSED, coupe:_VCPE }[carType] || _V328;
     out = _hostDecals(V, ['BRR','BRL','BHL','BHR'], [          // 後面パネル
