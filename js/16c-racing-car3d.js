@@ -220,188 +220,85 @@ function _poly(g, pts, fill, stroke, lw) {
 // 法線の向き整合）を Python(trimesh)で検証した。
 // ════════════════════════════════════════════════════════════
 
-// Ferrari 328 風ボディ。2026-07 トポロジー全面再設計（watertight検証済み・頂点12/面10）
-// ════════════════════════════════════════════════════════════
-// ── 車体頂点定義（ローカル座標）── [2026-07 ウェッジ型に全面再設計]
-// X=右±, Y=上(0=地面), Z=前方(0=リア,正=フロント)
-//
-// 単純な2段ボックス構成（旧版）から、ボンネット→カウル→フロント
-// ガラス→ルーフ→リアガラス→トランクという6ステーションの
-// プロファイルを持つ「くさび形」に再設計。各ステーション間は
-// ちょうど2面が共有する構造にし、側面はプロファイル全体を1枚の
-// hexagonでつなぐことで watertight を保証（Python/trimeshで
-// 全車種 watertight・法線整合・euler数=2（f40はwing込みで4）を検証済み）。
-// 全パネルは不透明(alpha=1.0)。窓もガラスも透明表現はしない。
-// ════════════════════════════════════════════════════════════
-
-// Ferrari 328 風ボディ。2026-07 ウェッジ型に全面再設計（ボンネット/カウル/フロントガラス/ルーフ/リアガラス/トランクの6角形プロファイル。watertight検証済み）
-const _V328 = {
-  BRL:[-1.00, 0.00, 0.00], BRR:[1.00, 0.00, 0.00],
-  BFL:[-1.00, 0.00, 2.20], BFR:[1.00, 0.00, 2.20],
-  BHL:[-1.02, 0.62, 0.00], BHR:[1.02, 0.62, 0.00],
-  BHFL:[-1.02, 0.62, 1.85], BHFR:[1.02, 0.62, 1.85],
-  CWL:[-0.86, 0.95, 1.50], CWR:[0.86, 0.95, 1.50],
-  RFL:[-0.42, 1.44, 1.25], RFR:[0.42, 1.44, 1.25],
-  RRL:[-0.42, 1.44, 0.55], RRR:[0.42, 1.44, 0.55],
-  TWL:[-0.55, 0.85, 0.30], TWR:[0.55, 0.85, 0.30],
+// ══ 乗用車: パラメータから頂点・面・窓を作る共通ジェネレータ（v1.4.0）══
+// 車は 側面プロファイル（鼻 → ボンネット → カウル → ルーフ前 → ルーフ後 → リアガラス下 → 後端）の数値だけで決まる。
+// 以前は車種ごとに頂点と面を手書きし、側面は「平面にならない六角形」を三角形4枚に割っていたため、
+//   ・面の縁取りが側面に三角形の斜線として見えた
+//   ・側面に窓がなかった
+// 今は、ルーフの縁(x=xr)とベルトライン(x=W)を結ぶ平面の上に カウル(CW)・リアガラス下(TW) の x を置く
+// （x(y) = W − (W−xr)·(y−yb)/(ルーフ高−yb)）。これで側面の上半分（グリーンハウス）は1枚の平面六角形になり、
+// 中央(ルーフ中央の z)で前後2枚の五角形に割るだけで済む。その割れ目が B ピラーになる。
+// 側面の窓は、この平面の上に前席ドア窓・後席ドア窓の2枚（デカール）を置く。
+// 頂点の名前は従来と同じ（BRL/BRR=後端下は影・光暈の基準）。ローカル座標: X=右±, Y=上, Z=前方(0=後端)。
+// P: bw=下端の半幅, W=ベルトラインの半幅, L=全長, yb=ベルトライン高, zh=ボンネット前端の z,
+//    cw=[z,y]=カウル(フロントガラス下端), rf=[z,y]=ルーフ前端, rr=[z,y]=ルーフ後端(y は rf と同じ), xr=ルーフ半幅, tw=[z,y]=リアガラス下端
+const _CARP = {
+  ferrari328:  { bw:1.00, W:1.02, L:2.20, yb:0.62, zh:1.85, cw:[1.50,0.95], rf:[1.25,1.44], rr:[0.55,1.44], xr:0.42, tw:[0.30,0.85] },
+  f40:         { bw:1.05, W:1.07, L:2.40, yb:0.55, zh:2.00, cw:[1.65,0.85], rf:[1.40,1.22], rr:[0.65,1.22], xr:0.44, tw:[0.35,0.72] },
+  sedan:       { bw:1.00, W:1.02, L:2.50, yb:0.68, zh:2.05, cw:[1.65,1.05], rf:[1.40,1.48], rr:[0.70,1.48], xr:0.50, tw:[0.45,0.94] },
+  coupe:       { bw:1.02, W:1.04, L:2.30, yb:0.60, zh:1.95, cw:[1.55,0.92], rf:[1.35,1.40], rr:[0.62,1.40], xr:0.42, tw:[0.35,0.86] },
+  // 80年代の日本車セダン（3ボックス: 平らなボンネット・立ったガラス・独立したトランク）
+  compact80:   { bw:1.00, W:1.01, L:2.35, yb:0.70, zh:2.12, cw:[1.78,0.86], rf:[1.50,1.50], rr:[0.66,1.50], xr:0.64, tw:[0.42,0.82] },   // 小型セダン（カローラ/シビック級）
+  saloon80:    { bw:1.02, W:1.03, L:2.75, yb:0.68, zh:2.45, cw:[2.02,0.86], rf:[1.64,1.40], rr:[0.78,1.40], xr:0.60, tw:[0.44,0.80] },   // 中型ハードトップ（マークII/クレスタ級: 低く長い）
+  executive80: { bw:1.03, W:1.04, L:2.85, yb:0.74, zh:2.55, cw:[2.06,0.92], rf:[1.72,1.55], rr:[0.80,1.55], xr:0.66, tw:[0.46,0.88] },   // 大型セダン（クラウン/セドリック級: 背が高く箱型）
 };
-
-// Ferrari F40 風ボディ + ウィング（ウィングは薄いソリッドとして閉じている）
-const _VF40 = {
-  BRL:[-1.05, 0.00, 0.00], BRR:[1.05, 0.00, 0.00],
-  BFL:[-1.05, 0.00, 2.40], BFR:[1.05, 0.00, 2.40],
-  BHL:[-1.07, 0.55, 0.00], BHR:[1.07, 0.55, 0.00],
-  BHFL:[-1.07, 0.55, 2.00], BHFR:[1.07, 0.55, 2.00],
-  CWL:[-0.90, 0.85, 1.65], CWR:[0.90, 0.85, 1.65],
-  RFL:[-0.44, 1.22, 1.40], RFR:[0.44, 1.22, 1.40],
-  RRL:[-0.44, 1.22, 0.65], RRR:[0.44, 1.22, 0.65],
-  TWL:[-0.60, 0.72, 0.35], TWR:[0.60, 0.72, 0.35],
-  WL:[-1.05, 1.07, 0.22], WR:[1.05, 1.07, 0.22],
-  WFL:[-1.05, 1.07, 0.58], WFR:[1.05, 1.07, 0.58],
-  WL_b:[-1.05, 1.04, 0.22], WR_b:[1.05, 1.04, 0.22],
-  WFL_b:[-1.05, 1.04, 0.58], WFR_b:[1.05, 1.04, 0.58],
+function _carVerts(P) {
+  const V = {}, both = (n, x, y, z) => { V[n + 'L'] = [-x, y, z]; V[n + 'R'] = [x, y, z]; };
+  const s = (P.W - P.xr) / (P.rf[1] - P.yb), X = y => P.W - s * (y - P.yb), m = (P.rf[0] + P.rr[0]) / 2;
+  both('BR', P.bw, 0, 0);   both('BF', P.bw, 0, P.L);
+  both('BH', P.W, P.yb, 0); both('BHF', P.W, P.yb, P.zh);
+  both('CW', X(P.cw[1]), P.cw[1], P.cw[0]);
+  both('RF', P.xr, P.rf[1], P.rf[0]); both('RR', P.xr, P.rf[1], P.rr[0]);
+  both('TW', X(P.tw[1]), P.tw[1], P.tw[0]);
+  both('MB', P.W, P.yb, m); both('MR', P.xr, P.rf[1], m);        // 側面を前後に割る線（Bピラー）の両端
+  return V;
+}
+function _carFaces(P, V, extra) {
+  const cen = [0, P.rf[1] * 0.5, P.L / 2];
+  const F = (k, t, fixedNy) => {                       // 巻き順は Newell 法線が外向き（車の中心から離れる向き）になるよう自動で揃える
+    const n = _newellModel(k.map(q => V[q])), c = [0, 1, 2].map(i => k.reduce((a, q) => a + V[q][i], 0) / k.length);
+    if (n[0]*(c[0]-cen[0]) + n[1]*(c[1]-cen[1]) + n[2]*(c[2]-cen[2]) < 0) { k = k.slice().reverse(); n[0] = -n[0]; n[1] = -n[1]; n[2] = -n[2]; }
+    const l = Math.hypot(n[0], n[1], n[2]) || 1;
+    return { k, ny: fixedNy !== undefined ? fixedNy : n[1]/l, nz: fixedNy !== undefined ? 0 : -n[2]/l, t, z: k.reduce((a, q) => a + V[q][2], 0) / k.length };
+  };
+  const out = [
+    F(['BRR','BRL','BHL','BHR'], 'body'),
+    F(['BFL','BHFL','BHL','BRL'], 'sideL', -0.35), F(['BHR','BHFR','BFR','BRR'], 'sideR', -0.10),     // 下半分の側面（ほぼ垂直な平面）
+    F(['BRR','BFR','BFL','BRL'], 'floor'),
+    F(['BHFR','BHFL','BFL','BFR'], 'body'),                                                              // 鼻
+    F(['BHFL','BHFR','CWR','CWL'], 'body'),                                                              // ボンネット
+    F(['CWL','CWR','RFR','RFL'], 'glass'),                                                               // フロントガラス
+    F(['RRR','RRL','RFL','RFR'], 'roof'),
+    F(['RRL','RRR','TWR','TWL'], 'glass'),                                                               // リアガラス
+    F(['TWL','TWR','BHR','BHL'], 'body'),                                                                // トランク
+    // グリーンハウスの側面（平面）を Bピラーの線で前後2枚に
+    F(['BHFL','CWL','RFL','MRL','MBL'], 'sideL', -0.35), F(['MBL','MRL','RRL','TWL','BHL'], 'sideL', -0.35),
+    F(['BHFR','CWR','RFR','MRR','MBR'], 'sideR', -0.10), F(['MBR','MRR','RRR','TWR','BHR'], 'sideR', -0.10),
+  ];
+  return extra ? out.concat(extra) : out;
+}
+// F40 のリアウィング（薄いソリッド）。頂点と面は従来のまま
+const _F40_WING_V = {
+  WL:[-1.05, 1.07, 0.22], WR:[1.05, 1.07, 0.22], WFL:[-1.05, 1.07, 0.58], WFR:[1.05, 1.07, 0.58],
+  WL_b:[-1.05, 1.04, 0.22], WR_b:[1.05, 1.04, 0.22], WFL_b:[-1.05, 1.04, 0.58], WFR_b:[1.05, 1.04, 0.58],
 };
-
-// セダン風ボディ（ウェッジ型、直立気味のプロファイル）
-const _VSED = {
-  BRL:[-1.00, 0.00, 0.00], BRR:[1.00, 0.00, 0.00],
-  BFL:[-1.00, 0.00, 2.50], BFR:[1.00, 0.00, 2.50],
-  BHL:[-1.02, 0.68, 0.00], BHR:[1.02, 0.68, 0.00],
-  BHFL:[-1.02, 0.68, 2.05], BHFR:[1.02, 0.68, 2.05],
-  CWL:[-0.86, 1.05, 1.65], CWR:[0.86, 1.05, 1.65],
-  RFL:[-0.50, 1.48, 1.40], RFR:[0.50, 1.48, 1.40],
-  RRL:[-0.50, 1.48, 0.70], RRR:[0.50, 1.48, 0.70],
-  TWL:[-0.62, 0.94, 0.45], TWR:[0.62, 0.94, 0.45],
-};
-
-// クーペ風ボディ（ウェッジ型）
-const _VCPE = {
-  BRL:[-1.02, 0.00, 0.00], BRR:[1.02, 0.00, 0.00],
-  BFL:[-1.02, 0.00, 2.30], BFR:[1.02, 0.00, 2.30],
-  BHL:[-1.04, 0.60, 0.00], BHR:[1.04, 0.60, 0.00],
-  BHFL:[-1.04, 0.60, 1.95], BHFR:[1.04, 0.60, 1.95],
-  CWL:[-0.88, 0.92, 1.55], CWR:[0.88, 0.92, 1.55],
-  RFL:[-0.42, 1.40, 1.35], RFR:[0.42, 1.40, 1.35],
-  RRL:[-0.42, 1.40, 0.62], RRR:[0.42, 1.40, 0.62],
-  TWL:[-0.52, 0.86, 0.35], TWR:[0.52, 0.86, 0.35],
-};
-
-// トラック（庇/eaveの重複ジオメトリを除去、watertight検証済み・頂点12/面12）
-// トラック（庇/eave除去 + 2026-07 長辺分割によるペインターズソート精度向上、watertight検証済み）
-// 元は floor/roof/side が4.5ユニットの全長を1面の平均Zでソートしており、
-// 斜め視点で著しい前後判定ミスが起きていた（Node.js+@napi-rs/canvasで
-// yaw=175°において穴10000px超を実測）。中央(z=2.25)で前後半分に分割し、
-// 各半分が自身に近いローカルな深度でソートされるようにした。
-function _faces328() {
-  return [
-    {k:['BRR','BRL','BHL','BHR'], ny:0.0, nz:1.0, t:'body', z:0.0},
-    {k:['BFL','BHFL','BHL','BRL'], ny:-0.35, nz:0, t:'sideL', z:1.01},
-    {k:['BHR','BHFR','BFR','BRR'], ny:-0.1, nz:0, t:'sideR', z:1.01},
-    {k:['BRR','BFR','BFL','BRL'], ny:-1.0, nz:-0.0, t:'floor', z:1.1},
-    {k:['BHFR','BHFL','BFL','BFR'], ny:0.49, nz:-0.87, t:'body', z:2.03},
-    {k:['BHFL','BHFR','CWR','CWL'], ny:0.73, nz:-0.69, t:'body', z:1.68},
-    {k:['CWL','CWR','RFR','RFL'], ny:0.45, nz:-0.89, t:'glass', z:1.38},
-    {k:['RRR','RRL','RFL','RFR'], ny:1.0, nz:-0.0, t:'roof', z:0.9},
-    {k:['RRL','RRR','TWR','TWL'], ny:0.39, nz:0.92, t:'glass', z:0.43},
-    {k:['TWL','TWR','BHR','BHL'], ny:0.79, nz:0.61, t:'body', z:0.15},
-    // ── サイドパネル4面（旧: 4頂点クアッド）は三角形2枚に分割 ──
-    // これら4面の頂点は3D空間で平面上に乗っておらず（ベルトライン/
-    // カウル/ルーフ/トランクが異なるXにあるため）、クアッドのまま
-    // 描画すると投影後に「ねじれた」自己交差ポリゴンとなり、パネルが
-    // めくれ上がって見えたり面同士が繋がっていないように見える原因に
-        // なっていた（Node.js+@napi-rs/canvasでyaw込みの実投影を行い、
-    // 4点の平面性を数値検証（スカラー三重積）して確認済み）。
-    // 三角形は3点なので常に平面 = 常に非自己交差。対角線は2通りの
-    // 分割のうち短い方（=元のクアッドの形状に最も近い自然な折れ線）
-    // を選んで統一した。
-    {k:['BHFL','CWL','RRL'], ny:-0.35, nz:0, t:'sideL', z:1.29},
-    {k:['CWL','RFL','RRL'],  ny:-0.35, nz:0, t:'sideL', z:1.29},
-    {k:['BHFL','RRL','BHL'], ny:-0.35, nz:0, t:'sideL', z:0.68},
-    {k:['RRL','TWL','BHL'],  ny:-0.35, nz:0, t:'sideL', z:0.68},
-    {k:['BHFR','BHR','RRR'], ny:-0.1, nz:0, t:'sideR', z:0.68},
-    {k:['BHR','TWR','RRR'],  ny:-0.1, nz:0, t:'sideR', z:0.68},
-    {k:['BHFR','RRR','CWR'], ny:-0.1, nz:0, t:'sideR', z:1.29},
-    {k:['RRR','RFR','CWR'],  ny:-0.1, nz:0, t:'sideR', z:1.29},
-  ];
+const _F40_WING_F = [
+  {k:['WR','WL','WFL','WFR'], ny:1.0, nz:-0.0, t:'wing', z:0.4},
+  {k:['WL_b','WR_b','WFR_b','WFL_b'], ny:-1.0, nz:-0.0, t:'wing', z:0.4},
+  {k:['WL','WL_b','WFL_b','WFL'], ny:0.0, nz:-0.0, t:'body', z:0.4},
+  {k:['WR','WFR','WFR_b','WR_b'], ny:0.0, nz:-0.0, t:'body', z:0.4},
+  {k:['WR_b','WL_b','WL','WR'], ny:0.0, nz:1.0, t:'body', z:0.22},
+  {k:['WFL_b','WFR_b','WFR','WFL'], ny:0.0, nz:-1.0, t:'body', z:0.58},
+];
+const _MESH = {};                                            // 車種 → { V: 頂点, F: 面(キャッシュ), P: パラメータ }
+for (const t in _CARP) {
+  const P = _CARP[t], V = _carVerts(P);
+  if (t === 'f40') Object.assign(V, _F40_WING_V);
+  _MESH[t] = { P, V, F: _carFaces(P, V, t === 'f40' ? _F40_WING_F : null) };
 }
-
-function _facesF40() {
-  return [
-    {k:['BRR','BRL','BHL','BHR'], ny:0.0, nz:1.0, t:'body', z:0.0},
-    {k:['BFL','BHFL','BHL','BRL'], ny:-0.35, nz:0, t:'sideL', z:1.1},
-    {k:['BHR','BHFR','BFR','BRR'], ny:-0.1, nz:0, t:'sideR', z:1.1},
-    {k:['BRR','BFR','BFL','BRL'], ny:-1.0, nz:-0.0, t:'floor', z:1.2},
-    {k:['BHFR','BHFL','BFL','BFR'], ny:0.59, nz:-0.81, t:'body', z:2.2},
-    {k:['BHFL','BHFR','CWR','CWL'], ny:0.76, nz:-0.65, t:'body', z:1.83},
-    {k:['CWL','CWR','RFR','RFL'], ny:0.56, nz:-0.83, t:'glass', z:1.52},
-    {k:['RRR','RRL','RFL','RFR'], ny:1.0, nz:-0.0, t:'roof', z:1.02},
-    {k:['RRL','RRR','TWR','TWL'], ny:0.51, nz:0.86, t:'glass', z:0.5},
-    {k:['TWL','TWR','BHR','BHL'], ny:0.9, nz:0.44, t:'body', z:0.17},
-    // ── サイドパネル4面を三角形2枚ずつに分割（詳細は_faces328参照）──
-    {k:['BHFL','CWL','RRL'], ny:-0.35, nz:0, t:'sideL', z:1.43},
-    {k:['CWL','RFL','RRL'],  ny:-0.35, nz:0, t:'sideL', z:1.43},
-    {k:['BHFL','RRL','BHL'], ny:-0.35, nz:0, t:'sideL', z:0.75},
-    {k:['RRL','TWL','BHL'],  ny:-0.35, nz:0, t:'sideL', z:0.75},
-    {k:['BHFR','BHR','RRR'], ny:-0.1, nz:0, t:'sideR', z:0.75},
-    {k:['BHR','TWR','RRR'],  ny:-0.1, nz:0, t:'sideR', z:0.75},
-    {k:['BHFR','RRR','CWR'], ny:-0.1, nz:0, t:'sideR', z:1.42},
-    {k:['RRR','RFR','CWR'],  ny:-0.1, nz:0, t:'sideR', z:1.42},
-    {k:['WR','WL','WFL','WFR'], ny:1.0, nz:-0.0, t:'wing', z:0.4},
-    {k:['WL_b','WR_b','WFR_b','WFL_b'], ny:-1.0, nz:-0.0, t:'wing', z:0.4},
-    {k:['WL','WL_b','WFL_b','WFL'], ny:0.0, nz:-0.0, t:'body', z:0.4},
-    {k:['WR','WFR','WFR_b','WR_b'], ny:0.0, nz:-0.0, t:'body', z:0.4},
-    {k:['WR_b','WL_b','WL','WR'], ny:0.0, nz:1.0, t:'body', z:0.22},
-    {k:['WFL_b','WFR_b','WFR','WFL'], ny:0.0, nz:-1.0, t:'body', z:0.58},
-  ];
-}
-
-function _facesSed() {
-  return [
-    {k:['BRR','BRL','BHL','BHR'], ny:0.0, nz:1.0, t:'body', z:0.0},
-    {k:['BFL','BHFL','BHL','BRL'], ny:-0.35, nz:0, t:'sideL', z:1.14},
-    {k:['BHR','BHFR','BFR','BRR'], ny:-0.1, nz:0, t:'sideR', z:1.14},
-    {k:['BRR','BFR','BFL','BRL'], ny:-1.0, nz:-0.0, t:'floor', z:1.25},
-    {k:['BHFR','BHFL','BFL','BFR'], ny:0.55, nz:-0.83, t:'body', z:2.27},
-    {k:['BHFL','BHFR','CWR','CWL'], ny:0.73, nz:-0.68, t:'body', z:1.85},
-    {k:['CWL','CWR','RFR','RFL'], ny:0.5, nz:-0.86, t:'glass', z:1.52},
-    {k:['RRR','RRL','RFL','RFR'], ny:1.0, nz:-0.0, t:'roof', z:1.05},
-    {k:['RRL','RRR','TWR','TWL'], ny:0.42, nz:0.91, t:'glass', z:0.57},
-    {k:['TWL','TWR','BHR','BHL'], ny:0.87, nz:0.5, t:'body', z:0.23},
-    // ── サイドパネル4面を三角形2枚ずつに分割（詳細は_faces328参照）──
-    {k:['BHFL','CWL','RRL'], ny:-0.35, nz:0, t:'sideL', z:1.45},
-    {k:['CWL','RFL','RRL'],  ny:-0.35, nz:0, t:'sideL', z:1.45},
-    {k:['BHFL','RRL','BHL'], ny:-0.35, nz:0, t:'sideL', z:0.8},
-    {k:['RRL','TWL','BHL'],  ny:-0.35, nz:0, t:'sideL', z:0.8},
-    {k:['BHFR','BHR','RRR'], ny:-0.1, nz:0, t:'sideR', z:0.8},
-    {k:['BHR','TWR','RRR'],  ny:-0.1, nz:0, t:'sideR', z:0.8},
-    {k:['BHFR','RRR','CWR'], ny:-0.1, nz:0, t:'sideR', z:1.45},
-    {k:['RRR','RFR','CWR'],  ny:-0.1, nz:0, t:'sideR', z:1.45},
-  ];
-}
-
-function _facesCpe() {
-  return [
-    {k:['BRR','BRL','BHL','BHR'], ny:0.0, nz:1.0, t:'body', z:0.0},
-    {k:['BFL','BHFL','BHL','BRL'], ny:-0.35, nz:0, t:'sideL', z:1.06},
-    {k:['BHR','BHFR','BFR','BRR'], ny:-0.1, nz:0, t:'sideR', z:1.06},
-    {k:['BRR','BFR','BFL','BRL'], ny:-1.0, nz:-0.0, t:'floor', z:1.15},
-    {k:['BHFR','BHFL','BFL','BFR'], ny:0.5, nz:-0.86, t:'body', z:2.12},
-    {k:['BHFL','BHFR','CWR','CWL'], ny:0.78, nz:-0.62, t:'body', z:1.75},
-    {k:['CWL','CWR','RFR','RFL'], ny:0.38, nz:-0.92, t:'glass', z:1.45},
-    {k:['RRR','RRL','RFL','RFR'], ny:1.0, nz:-0.0, t:'roof', z:0.98},
-    {k:['RRL','RRR','TWR','TWL'], ny:0.45, nz:0.89, t:'glass', z:0.48},
-    {k:['TWL','TWR','BHR','BHL'], ny:0.8, nz:0.6, t:'body', z:0.17},
-    // ── サイドパネル4面を三角形2枚ずつに分割（詳細は_faces328参照）──
-    {k:['BHFL','CWL','RRL'], ny:-0.35, nz:0, t:'sideL', z:1.37},
-    {k:['CWL','RFL','RRL'],  ny:-0.35, nz:0, t:'sideL', z:1.37},
-    {k:['BHFL','RRL','BHL'], ny:-0.35, nz:0, t:'sideL', z:0.73},
-    {k:['RRL','TWL','BHL'],  ny:-0.35, nz:0, t:'sideL', z:0.73},
-    {k:['BHFR','BHR','RRR'], ny:-0.1, nz:0, t:'sideR', z:0.73},
-    {k:['BHR','TWR','RRR'],  ny:-0.1, nz:0, t:'sideR', z:0.73},
-    {k:['BHFR','RRR','CWR'], ny:-0.1, nz:0, t:'sideR', z:1.37},
-    {k:['RRR','RFR','CWR'],  ny:-0.1, nz:0, t:'sideR', z:1.37},
-  ];
-}
+// 従来の名前（検証ツールが使う）
+const _V328 = _MESH.ferrari328.V, _VF40 = _MESH.f40.V, _VSED = _MESH.sedan.V, _VCPE = _MESH.coupe.V;
+const _faces328 = () => _MESH.ferrari328.F, _facesF40 = () => _MESH.f40.F, _facesSed = () => _MESH.sedan.F, _facesCpe = () => _MESH.coupe.F;
 
 // トラック（v1.4.0 で作り直し）。構造は3つの部品に分かれる:
 //   フレーム（シャーシ・黒）: 全長。幅 FW。床と側面と前後の面だけ。
@@ -595,16 +492,32 @@ function _decalsOf(carType) {
       out.push(_mkDecal('seam', [hostKey(sideKeys[sd])], o, [[x,T.YF,T.ZC],[x,T.YF,T.ZC+0.07],[x,T.YK,T.ZC+0.07],[x,T.YK,T.ZC]]));
     }
   } else {
-    const V = { f40:_VF40, sedan:_VSED, coupe:_VCPE }[carType] || _V328;
-    out = _hostDecals(V, ['BRR','BRL','BHL','BHR'], [          // 後面パネル
+    const M = _MESH[carType] || _MESH.ferrari328, V = M.V, P = M.P, FACES = M.F;
+    const hostKey = ks => { const set = ks.slice().sort().join(); return FACES.find(f => f.k.slice().sort().join() === set).k.join(','); };
+    const onHost = (ks, specs) => { const hk = hostKey(ks); return _hostDecals(V, ks, specs).map(d => (d.hosts = [hk], d)); };
+    out = onHost(['BRR','BRL','BHL','BHR'], [                // 後面パネル
       ['tail',   .05,.27, .34,.84], ['tail',   .73,.95, .34,.84],
       ['tailHi', .05,.15, .58,.84], ['tailHi', .85,.95, .58,.84],
       ['brake',  .43,.57, .86,.95],
       ['plate',  .36,.64, .08,.42],
-    ]).concat(_hostDecals(V, ['BHFR','BHFL','BFL','BFR'], [     // 前面ノーズ（斜面）
+    ]).concat(onHost(['BHFR','BHFL','BFL','BFR'], [           // 前面ノーズ（斜面）
       ['head',   .06,.28, .20,.70], ['head',   .72,.94, .20,.70],
       ['headHi', .06,.16, .30,.60], ['headHi', .84,.94, .30,.60],
     ]));
+    // 側面の窓: グリーンハウスの平面の上に 前席ドア窓 と 後席ドア窓（Bピラー=前後の割れ目を挟む）
+    const yb = P.yb, ry = P.rf[1], yw0 = yb + 0.12*(ry - yb), yw1 = ry - 0.06*(ry - yb), mz = (P.rf[0] + P.rr[0]) / 2, pil = 0.05;
+    const s = (P.W - P.xr) / (ry - yb), X = y => P.W - s * (y - yb);
+    const lerpZ = (a, b, y) => a[0] + (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]);
+    const BHF = [P.zh, yb], CW = P.cw, RF = P.rf, RR = P.rr, TW = P.tw, BH = [0, yb];
+    const zFront = y => (y >= CW[1] ? lerpZ(CW, RF, y) : lerpZ(BHF, CW, y)) - 0.06;     // Aピラー側の縁（内側へ少し）
+    const zRear  = y => (y >= TW[1] ? lerpZ(RR, TW, y) : lerpZ(BH, TW, y)) + 0.06;      // Cピラー側の縁
+    const wins = [ [[zFront(yw0), yw0], [zFront(yw1), yw1], [mz + pil, yw1], [mz + pil, yw0]],
+                   [[mz - pil, yw0], [mz - pil, yw1], [zRear(yw1), yw1], [zRear(yw0), yw0]] ];
+    const sideKeys = { R:[['BHFR','CWR','RFR','MRR','MBR'], ['MBR','MRR','RRR','TWR','BHR']], L:[['BHFL','CWL','RFL','MRL','MBL'], ['MBL','MRL','RRL','TWL','BHL']] };
+    for (const sd of ['R','L']) {
+      const sg = sd === 'R' ? 1 : -1, o = [sg, s, 0];
+      wins.forEach((w, i) => out.push(_mkDecal('glass', [hostKey(sideKeys[sd][i])], o, w.map(q => [sg*X(q[1]), q[1], q[0]]))));
+    }
   }
   return (_DECAL_CACHE[carType] = out);
 }
@@ -674,7 +587,7 @@ function _drawGlow(g, pts, glowCol) {
 // yaw          : Y軸回転(rad) — heading（道路に対する車体の絶対的な向き）から渡される。
 //                viewAngleは使わない（視差は_projWorld()が自動再現するため）。
 // rollZ        : Z軸ロール(rad) — プレーヤーのbank用
-// carType      : 'ferrari328'|'f40'|'sedan'|'coupe'|'truck'
+// carType      : 'ferrari328'|'f40'|'sedan'|'coupe'|'compact80'|'saloon80'|'executive80'|'truck'
 // isPlayer     : true=プレーヤー
 // hitFlash     : 衝突フラッシュ中
 // typeScale    : 車種ごとのワールドサイズ倍率（旧 TYPE_SCALE 相当）
@@ -697,11 +610,8 @@ function drawCar3D(g, Xw, Yw, Zw, cxAccPx, bodyCol, glowCol,
   // ── 頂点・フェイス選択 ──
   let vObj, fArr;
   switch (carType) {
-    case 'f40':   vObj = _VF40;  fArr = _facesF40();  break;
-    case 'sedan': vObj = _VSED;  fArr = _facesSed();  break;
-    case 'coupe': vObj = _VCPE;  fArr = _facesCpe();  break;
     case 'truck': vObj = _VTRK;  fArr = _facesTrk();  break;
-    default:      vObj = _V328;  fArr = _faces328();  break;
+    default: { const M = _MESH[carType] || _MESH.ferrari328; vObj = M.V; fArr = M.F; }
   }
 
   // ── 全頂点投影（road と同一の _projWorld を使用）──
@@ -770,6 +680,9 @@ const TYPE_SCALE = {
   ferrari328: 1.00,
   coupe      : 1.00,
   sedan      : 1.05,
+  compact80  : 1.00,
+  saloon80   : 1.08,
+  executive80: 1.12,
   f40        : 1.05,
   truck      : 1.46,
   bike       : 0.50,

@@ -20,7 +20,7 @@
 // 公開: window.Traffic（spawn / update / visYaw）
 // ════════════════════════════════════════════════
 window.Traffic = (function(){
-  const MASS = { ferrari328:0.9, f40:0.9, coupe:1.0, sedan:1.2, truck:6.0 };
+  const MASS = { ferrari328:0.9, f40:0.9, coupe:1.0, sedan:1.2, compact80:1.0, saloon80:1.2, executive80:1.4, truck:6.0 };
   const PLAYER_MASS = 0.9;                     // 自車 = ferrari328
   const mass = t => MASS[t] || 1;
   const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -67,9 +67,10 @@ window.Traffic = (function(){
     const maxCars = CFG.maxBase + lv*CFG.maxPerLv;
     if(traffic.length >= maxCars) return;
 
-    // 車種（トラックは距離とともに少し増える。f40 は5%）
-    const truckW = Math.min(0.22, 0.12 + lv*0.025), rem = 1.0 - truckW - 0.05, baseW = rem/3;
-    const types = ['ferrari328','coupe','sedan','truck','f40'], weights = [baseW, baseW, baseW, truckW, 0.05];
+    // 車種（トラックは距離とともに少し増える。f40 は5%。残りを乗用車で分ける: 80年代の日本車セダン3種で64%、他の3種で36%）
+    const truckW = Math.min(0.22, 0.12 + lv*0.025), rem = 1.0 - truckW - 0.05;
+    const types = ['ferrari328','coupe','sedan','compact80','saloon80','executive80','truck','f40'];
+    const share6 = [0.10, 0.12, 0.14, 0.22, 0.22, 0.20], weights = share6.map(w => w*rem).concat([truckW, 0.05]);
     let r = Math.random(), ti = 0;
     for(let i = 0; i < weights.length; i++){ r -= weights[i]; if(r <= 0){ ti = i; break; } }
     const ct = types[ti];
@@ -160,7 +161,7 @@ window.Traffic = (function(){
   function separate(a, b){
     const ma = mass(a.carType), mb = mass(b.carType), wa = mb/(ma + mb), wb = ma/(ma + mb);
     for(let it = 0; it < 3; it++){
-      const q = pen(a, b, 0.92); if(q.px <= 0 || q.pz <= 0) return;
+      const q = pen(a, b, 1.0); if(q.px <= 0 || q.pz <= 0) return;
       if(it === 0 && q.px < q.pz){
         const sft = (q.px + 3)/ROADW, dA = Math.sign(a.x - b.x) || (a.id < b.id ? -1 : 1);
         a.x = clamp(a.x + dA*sft*wa, -0.92, 0.92); b.x = clamp(b.x - dA*sft*wb, -0.92, 0.92);
@@ -169,6 +170,24 @@ window.Traffic = (function(){
         if(a.z < b.z){ a.z -= sft*wa; b.z += sft*wb; } else { a.z += sft*wa; b.z -= sft*wb; }
       }
     }
+  }
+
+  // 自車（PLAY=自車 / DEMO=デモ車）の車体から他車を押し出す（v1.4.0）。
+  // 衝突した後も、車体が自車に食い込んだままになって「重なって見える」のを防ぐ。自車は動かさず、他車だけを
+  // 浅い軸で離す（横に離せる時は横へ、そうでなければ前後へ）。他車どうしの重なりは次フレームの 2) で解消される。
+  function pushFromPlayer(c, g){
+    const relZ = c.z - cam.pos;
+    const px = (g.hw + HW_P)*ROADW - Math.abs(c.x - player.x)*ROADW;
+    const pz = Math.min(relZ + g.len, PLAYER_Z + PLAYER_LEN) - Math.max(relZ, PLAYER_Z);
+    if(px <= 0 || pz <= 0) return false;
+    if(px < pz){ c.x = clamp(c.x + (Math.sign(c.x - player.x) || 1)*(px + 3)/ROADW, -0.92, 0.92); }
+    else{
+      const ahead = relZ + g.len/2 >= PLAYER_Z + PLAYER_LEN/2;
+      c.z += (ahead ? 1 : -1)*(pz + 3);
+      // 前の車に押し付けている間、自車はその車より速く進めない（突き抜けて食い込み続けない）
+      if(ahead && !c.oncoming && !(player.inv > 0)) player.speed = Math.min(player.speed, Math.max(0, sv(c)));
+    }
+    return true;
   }
 
   // 自車と他車の衝突
@@ -216,6 +235,17 @@ window.Traffic = (function(){
       if(o.z + go.len > c.z - 800 && o.z < c.z + g.len + ahead) return false;
     }
     return true;
+  }
+
+  function resolveCars(list){
+    for(let pass = 0; pass < 4; pass++){
+      let any = false;
+      for(let i = 0; i < list.length; i++) for(let j = i + 1; j < list.length; j++){
+        const a = list[i], b = list[j], p = pen(a, b, 1.0);
+        if(p.px > 0 && p.pz > 0){ carCar(a, b, p); any = true; }
+      }
+      if(!any) break;
+    }
   }
 
   function update(dt){
@@ -275,14 +305,7 @@ window.Traffic = (function(){
 
     // 2) 他車どうしの衝突（玉突きで連鎖して重なることがあるので、重なりが無くなるまで数回繰り返す。
     //    揺れ・速度の受け渡しは各ペア 0.5秒に1回だけ(cool)）
-    for(let pass = 0; pass < 4; pass++){
-      let any = false;
-      for(let i = 0; i < list.length; i++) for(let j = i + 1; j < list.length; j++){
-        const a = list[i], b = list[j], p = pen(a, b, 0.92);
-        if(p.px > 0 && p.pz > 0){ carCar(a, b, p); any = true; }
-      }
-      if(!any) break;
-    }
+    resolveCars(list);
 
     // 3) 自車との衝突・追い越し・消滅
     traffic = list.filter(car => {
@@ -301,16 +324,30 @@ window.Traffic = (function(){
       }
 
       // 自車との衝突: 描画と同じ基準（車体の長さが重なり、横も重なった）
-      if(mode === MODE.PLAY && !car.hitTimer && carTouchesPlayer(relZ, car.carType)){
+      // 同じ向きで速度がほぼ同じ（押し付けて並走しているだけ）なら、新たな衝突にはしない（毎回ダメージを受けないように）
+      if(mode === MODE.PLAY && !car.hitTimer && carTouchesPlayer(relZ, car.carType) && Math.abs(player.speed - sv(car)) > 6){
         if(Math.abs(car.x - player.x) < (g.hw + HW_P)*0.85) carPlayer(car, relZ, g);
       }
       if(car.hitTimer > 0) car.hitTimer--;
       return true;
     });
+    // 4) 自車（デモ車）の車体から他車を押し出す。押し出した車が前の車に食い込むことがあるので、
+    //    そのたびに他車どうしを離し直す（数回で収まる。前方は空いているので前の車がさらに進める）
+    if(mode === MODE.PLAY || mode === MODE.DEMO){
+      for(let it = 0; it < 3; it++){
+        let moved = false;
+        // PLAY では「もう衝突した車（hitTimer>0）」と「横がかすっただけで衝突にならない車（横の重なりが15%未満）」を押し出す。
+        // 衝突になる車を接触の前に押し出すと衝突が起きなくなるので、それは除く
+        for(const c of traffic){ const g = geom(c);
+          if((mode === MODE.DEMO || c.hitTimer > 0 || Math.abs(c.x - player.x) >= (g.hw + HW_P)*0.85) && pushFromPlayer(c, g)) moved = true; }
+        if(!moved) break;
+        resolveCars(traffic);
+      }
+    }
   }
 
-  return { spawn, update, visYaw, CFG, massFactor, speedFactor, kickFor, exchange, overlapAny: list => {
+  return { spawn, update, visYaw, CFG, pushFromPlayer, massFactor, speedFactor, kickFor, exchange, overlapAny: list => {
     for(let i = 0; i < list.length; i++) for(let j = i + 1; j < list.length; j++){
-      ensure(list[i]); ensure(list[j]); const p = pen(list[i], list[j], 0.92); if(p.px > 0 && p.pz > 0) return [list[i], list[j]];
+      ensure(list[i]); ensure(list[j]); const p = pen(list[i], list[j], 1.0); if(p.px > 0 && p.pz > 0) return [list[i], list[j]];
     } return null; }, MASS };
 })();

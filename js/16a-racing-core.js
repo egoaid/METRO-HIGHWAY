@@ -389,7 +389,7 @@ function projFull(worldZ,cxAcc){
 // ── 他車の寸法・画面外判定・衝突判定（描画と必ず同じ基準を使う）──
 // モデルのローカル最大寸法（高さ y・長さ z）。実寸 = 値 × WORLD_CAR_HALF_W × TYPE_SCALE（16c）。
 // 車体は「後端が Zw、前端が Zw+長さ」（ローカル z=0 が後端）。
-const CAR_LOCAL={ferrari328:{y:1.44,z:2.2},f40:{y:1.22,z:2.4},sedan:{y:1.48,z:2.5},coupe:{y:1.40,z:2.3},truck:{y:1.69,z:4.5}};
+const CAR_LOCAL={ferrari328:{y:1.44,z:2.2},f40:{y:1.22,z:2.4},sedan:{y:1.48,z:2.5},coupe:{y:1.40,z:2.3},compact80:{y:1.50,z:2.35},saloon80:{y:1.40,z:2.75},executive80:{y:1.55,z:2.85},truck:{y:1.69,z:4.5}};
 function carWorldSize(type){
   const k=(typeof WORLD_CAR_HALF_W==='number'?WORLD_CAR_HALF_W:312.5)
          *((typeof TYPE_SCALE!=='undefined'&&TYPE_SCALE[type])||1);
@@ -419,7 +419,8 @@ function carBehindSpawnRelZ(type){ const d=carWorldSize(type); return 0.9*carBel
 // 自車と接触しているか（相対Z）。後端同士の差で、互いの車体の長さが重なる範囲（8割で判定）。
 function carTouchesPlayer(relZ,type){
   const d=carWorldSize(type);
-  return relZ+d.len*0.8>PLAYER_Z && relZ<PLAYER_Z+PLAYER_LEN*0.8;
+  // v1.4.0: 車体が実際に触れた時（以前は互いに2割食い込むまで衝突にならず、その間は車体が重なって見えた）
+  return relZ+d.len>PLAYER_Z && relZ<PLAYER_Z+PLAYER_LEN;
 }
 
 // ── 道路の外側に置く物の中心位置 ──
