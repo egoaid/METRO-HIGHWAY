@@ -745,8 +745,10 @@ function drawPlayerCar(g,bpm,t){
   const yaw   = player.bank * 0.55 + player.slip;
   const rollZ = player.bank * 0.15;
   // road と同一の cxAcc（直前の道路中心オフセット）と単位系を共有する。
+  // 車種と色はガレージの車（PLAY中は選んだ車、タイトル中は見ている車）
+  const pc = Garage.shownCar();
   drawCar3D(g, player.x * ROADW, 0, PLAYER_Z, roadCenterOffsetPx,
-            '#cc0020', '#5df0c8', yaw, rollZ, 'ferrari328', true, false, 1.0);
+            pc.color, '#5df0c8', yaw, rollZ, pc.type, true, false, Garage.visScale(pc));
 
   // 無敵（星を取った直後）: 車全体が金色に光る。残り2秒は点滅して終わりを知らせ、終わると元に戻る。
   //  ・車の周りに光暈（加算合成）  ・同じ車を金色で加算合成して重ね、全体を明るく  ・光り方は脈動する
@@ -761,7 +763,7 @@ function drawPlayerCar(g,bpm,t){
       g.globalCompositeOperation = 'lighter';
       g.globalAlpha = 0.34 + 0.20 * pulse;
       drawCar3D(g, player.x * ROADW, 0, PLAYER_Z, roadCenterOffsetPx,
-                '#ffb020', '#fff0a0', yaw, rollZ, 'ferrari328', true, false, 1.0);
+                '#ffb020', '#fff0a0', yaw, rollZ, pc.type, true, false, Garage.visScale(pc));
       g.restore();
     }
   }

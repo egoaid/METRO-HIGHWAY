@@ -140,6 +140,35 @@ function playHeartSound(){
     osc.start(t0); osc.stop(t0+0.32);
   });
 }
+function playCoinSound(combo){
+  if(!sndReady) return;
+  // コイン: 短い「チン」。続けて取るほど半音ずつ高くなる（最大7段）
+  const now = sndCtx.currentTime, f = 1318.5*Math.pow(2,(combo||0)/12);
+  [f, f*1.5].forEach((fr,i)=>{
+    const osc = sndCtx.createOscillator(), gn = sndCtx.createGain();
+    osc.type='square'; osc.frequency.value=fr;
+    const t0 = now + i*0.045;
+    gn.gain.setValueAtTime(0.0001,t0);
+    gn.gain.exponentialRampToValueAtTime(0.07,t0+0.008);
+    gn.gain.exponentialRampToValueAtTime(0.001,t0+0.16);
+    osc.connect(gn); gn.connect(sndCtx.destination);
+    osc.start(t0); osc.stop(t0+0.18);
+  });
+}
+function playPurchaseSound(){
+  if(!sndReady) return;
+  const now = sndCtx.currentTime;
+  [523.3,659.3,784,1046.5].forEach((fr,i)=>{
+    const osc = sndCtx.createOscillator(), gn = sndCtx.createGain();
+    osc.type='triangle'; osc.frequency.value=fr;
+    const t0 = now + i*0.08;
+    gn.gain.setValueAtTime(0.0001,t0);
+    gn.gain.exponentialRampToValueAtTime(0.14,t0+0.02);
+    gn.gain.exponentialRampToValueAtTime(0.001,t0+0.35);
+    osc.connect(gn); gn.connect(sndCtx.destination);
+    osc.start(t0); osc.stop(t0+0.38);
+  });
+}
 function playCrashSound(){
   if(!sndReady) return;
   const now = sndCtx.currentTime;

@@ -21,14 +21,13 @@
 // ════════════════════════════════════════════════
 window.Traffic = (function(){
   const MASS = { ferrari328:0.9, f40:0.9, coupe:1.0, sedan:1.2, compact80:1.0, saloon80:1.2, executive80:1.4, truck:6.0 };
-  const PLAYER_MASS = 0.9;                     // 自車 = ferrari328
   const mass = t => MASS[t] || 1;
   const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
   const rr = (a, b) => a + Math.random()*(b - a);
   const ROGUE_P = 0.12, ONC_TARGET = 0.50;     // 対向車は道路上の約4割を目標（出現率の目標は高めに置く: 対向車は短時間で通り過ぎるため）
   // 交通量の設定（16b のループが出現間隔 gap/jitter を、spawn が台数の上限 maxBase/maxPerLv を使う）
   const CFG = { gap:1.6, jitter:1.0, maxBase:6, maxPerLv:1 };
-  const HW_P = 0.164;                          // 自車の半幅(道路単位) = 312.5*1.05/ROADW
+  // 自車の半幅 PLAYER_HW・重さ PLAYER_MASS・長さ PLAYER_LEN は 16a のグローバル（ガレージの車で変わる）
   const ALL_LANES = [-0.66, -0.22, 0.22, 0.66];
   const E_REST = 0.2;                          // 反発係数
   let nextId = 1;
@@ -180,7 +179,7 @@ window.Traffic = (function(){
   // 浅い軸で離す（横に離せる時は横へ、そうでなければ前後へ）。他車どうしの重なりは次フレームの 2) で解消される。
   function pushFromPlayer(c, g){
     const relZ = c.z - cam.pos;
-    const px = (g.hw + HW_P)*ROADW - Math.abs(c.x - player.x)*ROADW;
+    const px = (g.hw + PLAYER_HW)*ROADW - Math.abs(c.x - player.x)*ROADW;
     const pz = Math.min(relZ + g.len, PLAYER_Z + PLAYER_LEN) - Math.max(relZ, PLAYER_Z);
     if(px <= 0 || pz <= 0) return false;
     if(px < pz){ c.x = clamp(c.x + (Math.sign(c.x - player.x) || 1)*(px + 3)/ROADW, -0.92, 0.92); }
@@ -193,6 +192,14 @@ window.Traffic = (function(){
     return true;
   }
 
+  // 接触が横方向（浅い軸が横）か。並走中に自車が横へ流されて車体が触れた時は、速度が同じでも衝突にする
+  // （速度差だけで判定すると、横に流されて隣の車に食い込んでも何も起きない）
+  function lateralContact(c, relZ, g){
+    const px = (g.hw + PLAYER_HW)*ROADW - Math.abs(c.x - player.x)*ROADW;
+    const pz = Math.min(relZ + g.len, PLAYER_Z + PLAYER_LEN) - Math.max(relZ, PLAYER_Z);
+    return px > 0 && px < pz;
+  }
+
   // 自車と他車の衝突
   function carPlayer(c, relZ, g){
     const inv = player.inv > 0, mc = mass(c.carType);
@@ -200,7 +207,7 @@ window.Traffic = (function(){
     const uC = clamp(((zc - relZ)/g.len)*2 - 1, -1, 1), uP = clamp(((zc - PLAYER_Z)/PLAYER_LEN)*2 - 1, -1, 1);
     const dirP = Math.sign(player.x - c.x) || 1, dirC = -dirP;
     const vP = player.speed, vC = sv(c), rel = Math.abs(vP - vC);
-    const lat = 0.35 + 0.65*clamp(Math.abs(c.x - player.x)/(g.hw + HW_P), 0, 1);
+    const lat = 0.35 + 0.65*clamp(Math.abs(c.x - player.x)/(g.hw + PLAYER_HW), 0, 1);
     // 他車の揺れ（無敵中は INV_BOOST 倍）
     kickCar(c, dirC, uC, rel, PLAYER_MASS, lat, inv ? INV_BOOST : 1);
     // 追突・正面衝突は速度も受け渡す（自車は6割、無敵なら自車は減速しない・相手は1.6倍に弾かれる）
@@ -361,8 +368,8 @@ window.Traffic = (function(){
 
       // 自車との衝突: 描画と同じ基準（車体の長さが重なり、横も重なった）
       // 同じ向きで速度がほぼ同じ（押し付けて並走しているだけ）なら、新たな衝突にはしない（毎回ダメージを受けないように）
-      if(mode === MODE.PLAY && !car.hitTimer && carTouchesPlayer(relZ, car.carType) && Math.abs(player.speed - sv(car)) > 6){
-        if(Math.abs(car.x - player.x) < (g.hw + HW_P)*0.85) carPlayer(car, relZ, g);
+      if(mode === MODE.PLAY && !car.hitTimer && carTouchesPlayer(relZ, car.carType) && (Math.abs(player.speed - sv(car)) > 6 || lateralContact(car, relZ, g))){
+        if(Math.abs(car.x - player.x) < (g.hw + PLAYER_HW)*0.85) carPlayer(car, relZ, g);
       }
       if(car.hitTimer > 0) car.hitTimer--;
       return true;
@@ -375,7 +382,8 @@ window.Traffic = (function(){
         // PLAY では「もう衝突した車（hitTimer>0）」と「横がかすっただけで衝突にならない車（横の重なりが15%未満）」を押し出す。
         // 衝突になる車を接触の前に押し出すと衝突が起きなくなるので、それは除く
         for(const c of traffic){ const g = geom(c);
-          if((mode === MODE.DEMO || c.hitTimer > 0 || Math.abs(c.x - player.x) >= (g.hw + HW_P)*0.85) && pushFromPlayer(c, g)) moved = true; }
+          const glued = carTouchesPlayer(c.z - cam.pos, c.carType) && Math.abs(player.speed - sv(c)) <= 6 && !lateralContact(c, c.z - cam.pos, g);   // 速度がほぼ同じ（ゆっくり追突/追従）: 衝突にはしないが、重ならないよう離す
+          if((mode === MODE.DEMO || c.hitTimer > 0 || glued || Math.abs(c.x - player.x) >= (g.hw + PLAYER_HW)*0.85) && pushFromPlayer(c, g)) moved = true; }
         if(!moved) break;
         resolveCars(traffic);
       }

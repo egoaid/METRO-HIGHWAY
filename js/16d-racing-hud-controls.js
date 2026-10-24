@@ -17,9 +17,21 @@ function drawHUD(g,bpm){
   g.font=`bold ${Math.round(H*0.052)}px 'Share Tech Mono',monospace`;
   g.fillText(songTxt,W*0.03,H*0.148);
   g.shadowBlur=0;g.textAlign='left';
+  if(typeof Garage!=='undefined'){
+    Garage.drawPanel(g);                                        // 車の選択・購入パネル（← → で選ぶ）
+    g.font=`${Math.round(H*0.024)}px 'Share Tech Mono',monospace`;g.textAlign='center';g.fillStyle='rgba(93,240,200,0.40)';
+    g.fillText(IS_TOUCH_DEVICE?'TAP ◀ ▶ TO CHOOSE A CAR':'← → CHOOSE A CAR',W*0.5,H*0.285+H*0.30+H*0.035);
+    g.textAlign='left';
+  }
 }
 function drawGameHUD(g){
   const fs=Math.round(H*0.032);
+  g.shadowColor='#5df0c8';g.shadowBlur=4;
+  // コイン（この走行で取った数 / 持っている合計）
+  g.font=`${Math.round(H*0.034)}px 'Share Tech Mono',monospace`;g.fillStyle='#ffd23a';g.shadowColor='#ffd23a';g.shadowBlur=5;
+  g.fillText(`◎ ${game.coins}`,W*0.03,H*0.31);
+  g.fillStyle='rgba(255,210,58,0.55)';g.font=`${Math.round(H*0.024)}px 'Share Tech Mono',monospace`;
+  g.fillText(`TOTAL ${Garage.coins()}`,W*0.03,H*0.345);
   g.shadowColor='#5df0c8';g.shadowBlur=4;
   // HP ハート（0.5刻み: 半分のハートは左半分だけ赤く塗る）。ハートを取った直後は一瞬光る
   g.font=`${Math.round(H*0.048)}px serif`;

@@ -6,7 +6,7 @@ let demoLane=0.66, demoLaneT=0, demoTgtS=0.66, demoVx=0;
 function frame(t){
   if(!enabled)return;
   rafId=requestAnimationFrame(frame);
-  if(typeof Roadside==='undefined'||typeof Hologram==='undefined'||typeof SpeedFx==='undefined'||typeof Traffic==='undefined'||typeof StarBonus==='undefined'||typeof HeartBonus==='undefined')return; // 16f/16h/16i/16j/16k が読み込み中の間は描かない
+  if(typeof Roadside==='undefined'||typeof Hologram==='undefined'||typeof SpeedFx==='undefined'||typeof Traffic==='undefined'||typeof StarBonus==='undefined'||typeof HeartBonus==='undefined'||typeof CoinBonus==='undefined'||typeof Garage==='undefined')return; // 16f/16h/16i/16j/16k/16l/16m が読み込み中の間は描かない
   if(t-lastT<33)return;
   const dt=Math.min((t-lastT)/1000,0.08);
   lastT=t;
@@ -19,8 +19,10 @@ function frame(t){
   // ══ 物理更新 ══
   if(mode===MODE.PLAY){
     // ── 縦速度 ──
-    if(keys.U) player.speed=Math.min(SPD_MAX,player.speed+SPD_ACCEL*dt);
-    else if(keys.D) player.speed=Math.max(0,player.speed-SPD_BRAKE*dt);
+    // 走行性能は、ガレージで選んだ車の値（16l の CARS）。最高速・加速・ブレーキ・ハンドル・グリップが車ごとに違う。
+    const S=Garage.stats();
+    if(keys.U) player.speed=Math.min(S.vmax,player.speed+S.accel*dt);
+    else if(keys.D) player.speed=Math.max(0,player.speed-S.brake*dt);
     else player.speed=Math.max(0,player.speed-SPD_DRAG*dt);
 
     // ── 横操舵（直接 x 操作モデル）──
@@ -29,12 +31,12 @@ function frame(t){
     // 速度依存: 高速ほど同じキー時間で多く動く。
     // STEER_RATE=0.35/sec @ 最高速 → 最高速で端まで約2.6秒。
     const STEER_RATE = 0.35;
-    const sr = player.speed / SPD_MAX;
+    const sr = player.speed / Garage.SPD_REF;          // 操舵・カーブは基準速度 220km/h に対する比（速い車ほど大きくなる）
     // steerInput: キーボードは ±1、ジョイスティックは -1〜+1 のアナログ値
     let steerInput = 0;
     if(player.speed > 5){
       steerInput = Math.max(-1, Math.min(1, (keys.R?1:0) - (keys.L?1:0) + keys.ax));
-      player.x += STEER_RATE * sr * dt * steerInput;
+      player.x += STEER_RATE * S.handling * sr * dt * steerInput;
     }
 
     // ── カーブによる横ドリフト ──
@@ -43,14 +45,14 @@ function frame(t){
     // 操舵力(0.35/s) はドリフト(最大0.125/s)の約2.8倍なので
     // ハンドルで十分打ち消せる。
     if(player.speed > 5){
-      const speedFactor = sr * 0.25;
-      player.x += curSeg.curve * speedFactor * dt;
+      // v1.6.0: 流れは速度の2乗に比例（以前は比例）。グリップが高いほど流されにくい。高速でカーブに入るほどきつくなる
+      player.x += curSeg.curve * Garage.CURVE_K * sr * sr / S.grip * dt;
     }
 
     player.x = Math.max(-0.98, Math.min(0.98, player.x));
 
     // xv はバンク計算のためだけに維持（実際の位置更新には使わない）
-    player.xv = steerInput * STEER_RATE * sr;
+    player.xv = steerInput * STEER_RATE * S.handling * sr;
 
     // ── バンク ──
     player.bank += (-(player.xv * 0.45) - player.bank) * 0.12;
@@ -145,7 +147,10 @@ function frame(t){
   // ══ ハートの回復アイテム ══（16k-racing-heart.js）
   if(mode===MODE.PLAY) HeartBonus.update(dt,t);
 
-  updateEngineSound(player.speed, SPD_MAX);
+  // ══ コイン ══（16m-racing-coin.js）
+  if(mode===MODE.PLAY) CoinBonus.update(dt);
+
+  updateEngineSound(player.speed, mode===MODE.PLAY?Garage.stats().vmax:SPD_MAX);
   drawScene(t,bpm);
   if(mode===MODE.OVER)drawGameOver();
 }
@@ -459,6 +464,11 @@ function drawWorld(t,bpm){
       if(relZ > DRAW*SEGZ || relZ < 200) return;
       items.push({k:'star', relZ, star:st});
     });
+    CoinBonus.items().forEach(cn=>{
+      const relZ = cn.z - cam.pos;
+      if(relZ > DRAW*SEGZ || relZ < 200) return;
+      items.push({k:'coin', relZ, coin:cn});
+    });
     HeartBonus.items().forEach(ht=>{
       const relZ = ht.z - cam.pos;
       if(relZ > DRAW*SEGZ || relZ < 200) return;
@@ -475,6 +485,7 @@ function drawWorld(t,bpm){
       try {
         if(it.k==='star'){ StarBonus.draw(g, it.star, relZ, cxAcc, t); return; }
         if(it.k==='heart'){ HeartBonus.draw(g, it.heart, relZ, cxAcc, t); return; }
+        if(it.k==='coin'){ CoinBonus.draw(g, it.coin, relZ, cxAcc, t); return; }
         const car = it.car;
         // 向き = 基本の向き + 衝突の揺れ + 車線変更の舵（Traffic.visYaw）
         drawTrafficCar(g, car.x * ROADW, relZ, cxAcc,

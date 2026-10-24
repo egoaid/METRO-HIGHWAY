@@ -70,7 +70,7 @@ const CAM_SCALE = 14;
 const MODE={DEMO:'demo',PLAY:'play',OVER:'over'};
 let mode=MODE.DEMO;
 // hp は 0.5 刻み（ダメージ=1、ハート取得=+0.5）。maxHp を超えない。
-const game={hp:3,maxHp:3,dist:0,best:0,hitTimer:0,overTimer:0,nextStar:0,nextHeart:0,healT:0};
+const game={hp:3,maxHp:3,dist:0,best:0,hitTimer:0,overTimer:0,nextStar:0,nextHeart:0,healT:0,coins:0,nextCoin:0};
 
 // ── 交通ルールと星のボーナス ──
 // 右側通行: 自車と同方向の車線は道路の右半分、対向車線は左半分（車線の中央。道路は4車線: ±0.22, ±0.66）。
@@ -91,6 +91,13 @@ const HEART_HEAL=0.5;
 const HEART_FIRST=[800,1400];    // 最初のハートまでの距離の範囲(m)
 const HEART_EVERY=[1600,2400];   // 次のハートまでの距離の範囲(m)（平均 2000m）
 let bonusHearts=[];
+// 道路に落ちているコイン（16m-racing-coin.js）。1枚=COIN_VALUE。貯めたコインでガレージ（16l）の車を買う。
+// コインは「自車線の2レーン」に、5〜6枚の列（直線 or 斜め）で置く。取ろうとして車線を変えること自体が、
+// 衝突の危険を増やす（取るか避けるかの判断がゲームの難しさになる）。約 COIN_EVERY(m) ごとに1列。
+const COIN_VALUE=1;
+const COIN_FIRST=[150,300];      // 最初のコイン列までの距離の範囲(m)
+const COIN_EVERY=[300,500];      // 次のコイン列までの距離の範囲(m)（平均 400m ≒ 1kmに6枚前後を取れる）
+let bonusCoins=[];
 const cam={pos:0};
 const player={x:0,xv:0,speed:0,bank:0,
   inv:0,     // 無敵の残り時間(秒)。星を取ると INV_TIME
@@ -119,6 +126,10 @@ window.addEventListener('keydown',e=>{
   if(e.key==='ArrowRight'){keys.R=true;e.preventDefault();}
   if(e.key==='ArrowUp')   {keys.U=true;e.preventDefault();}
   if(e.key==='ArrowDown') {keys.D=true;e.preventDefault();}
+  if(mode!==MODE.PLAY&&typeof Garage!=='undefined'){   // タイトル/ゲームオーバー画面: ←→ で車を選ぶ
+    if(e.key==='ArrowLeft'){Garage.select(-1);}
+    if(e.key==='ArrowRight'){Garage.select(1);}
+  }
   if((e.key===' '||e.key==='Enter')&&mode!==MODE.PLAY)startGame();
 });
 window.addEventListener('keyup',e=>{
@@ -398,7 +409,8 @@ function carWorldSize(type){
   const l=CAR_LOCAL[type]||CAR_LOCAL.ferrari328;
   return {roof:l.y*k, len:l.z*k, half:k*1.05};
 }
-const PLAYER_LEN=2.2*312.5;   // 自車の長さ（ferrari328）
+// 自車の車体サイズ（ガレージで選んだ車で変わる: Garage.applyToPlayer）。初期値は ferrari328
+let PLAYER_LEN=2.2*312.5, PLAYER_HW=0.164, PLAYER_MASS=0.9;
 // 前端の屋根（車の中で画面上いちばん高い点）が画面下端 HB に達する前端Z。
 // 前端Z がこれ以下になると、車全体が画面の下へ出ている。
 function carBelowZ(roof){
@@ -449,13 +461,16 @@ function ensureAutoDrone(){
   if(b&&!b.classList.contains('playing')){_adKickAt=now;b.click();}
 }
 function startGame(){
+  if(typeof Garage!=='undefined'&&!Garage.ready())return;   // 未購入の車を見ている時は、開始ではなく購入（コイン不足ならメッセージ）
   initSound();
   ensureAutoDrone();
   mode=MODE.PLAY;
   game.hp=game.maxHp;game.dist=0;game.hitTimer=0;game.overTimer=0;game.nextStar=STAR_FIRST_DIST;game.nextHeart=HEART_FIRST[0]+Math.random()*(HEART_FIRST[1]-HEART_FIRST[0]);
   cam.pos=0;player.x=PLAYER_START_X;player.xv=0;player.speed=0;player.bank=0;player.inv=0;
   player.slip=0;player.slipV=0;player.slideV=0;
-  traffic=[];bonusStars=[];bonusHearts=[];spawnTick=0;
+  traffic=[];bonusStars=[];bonusHearts=[];bonusCoins=[];spawnTick=0;
+  game.coins=0;game.nextCoin=COIN_FIRST[0]+Math.random()*(COIN_FIRST[1]-COIN_FIRST[0]);
+  if(typeof Garage!=='undefined')Garage.applyToPlayer();
   addLog('GAME START!  ↑ACCEL  ↓BRAKE  ←→STEER');
   const gb=document.getElementById('vfdGameBtn');
   if(gb){gb.textContent='DEMO';gb.classList.remove('btn-red');gb.classList.add('btn');}
@@ -493,11 +508,12 @@ function endGame(){
   if(game.dist>game.best)game.best=game.dist;
   addLog(`GAME OVER! ${(game.dist/1000).toFixed(2)}km`);
   if(game.dist>=game.best&&game.dist>0)addLog('★ NEW RECORD!');
+  if(typeof Garage!=='undefined')Garage.onGameOver(game.coins);
   setTimeout(()=>{
     mode=MODE.DEMO;
     player.speed=0;player.x=PLAYER_START_X;player.xv=0;player.bank=0;player.inv=0;
     player.slip=0;player.slipV=0;player.slideV=0;
-    traffic=[];bonusStars=[];bonusHearts=[];
+    traffic=[];bonusStars=[];bonusHearts=[];bonusCoins=[];
     const gb=document.getElementById('vfdGameBtn');
     if(gb){gb.textContent='PLAY';gb.classList.add('btn-red');gb.classList.remove('btn');}
   },3500);
