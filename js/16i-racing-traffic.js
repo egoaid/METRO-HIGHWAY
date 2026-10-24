@@ -96,7 +96,10 @@ window.Traffic = (function(){
     const lanes = (oncoming !== rogue) ? LANES_ONC : LANES_FWD;
     const x = lanes[Math.random() < 0.5 ? 0 : 1];
 
-    const col = ct === 'f40' ? '#ff40a0' : ct === 'truck' ? '#e08020' : NEON[Math.floor(Math.random()*NEON.length)];
+    // 色: f40/トラックは固定。80年代セダンは車種ごとの色（白や暗すぎる色は夜の道で見えないので使わない）で、車種を見分けやすくする
+    const SEDAN_COLS = { compact80:['#ffd020','#20d0b0','#ff8a20'], saloon80:['#d02050','#2a70e0','#a050ff'], executive80:['#18a868','#d8a840','#5080b0'] };
+    const pal = SEDAN_COLS[ct] || NEON;
+    const col = ct === 'f40' ? '#ff40a0' : ct === 'truck' ? '#e08020' : pal[Math.floor(Math.random()*pal.length)];
     const car = { id:nextId++, z:absZ, x, tx:x, ownSpd, cruise:ownSpd, col, carType:ct, oncoming, rogue,
                   heading: oncoming ? Math.PI : 0, viewAngle:0, hitTimer:0, avoidsPlayer:false,
                   passed:(absZ - cam.pos) < PLAYER_Z,
@@ -248,6 +251,19 @@ window.Traffic = (function(){
     }
   }
 
+  // 隣の車線へ逃げる（自分が走れる車線の中で、今の車線に最も近い空いている車線）。逃げられたら true
+  // force=true は空き確認をしない（詰まって動けない時の最後の手段）
+  function sidestep(c, obs, ahead, force){
+    const lanes = c.rogue ? ALL_LANES : (c.oncoming ? LANES_ONC : LANES_FWD);
+    // 正面から来る車どうしが同じ車線へ逃げて向き合い続けないよう、「自分の進行方向の右側」を先に選ぶ
+    // （同じ向きなら +x 側、対向車は -x 側。右側通行なので、すれ違う2台は互いに逆の側へ逃げる）
+    const right = c.oncoming ? -1 : 1;
+    const cands = lanes.filter(x => Math.abs(x - c.x) > 0.1)
+      .sort((a, b) => ((Math.sign(a - c.x) === right ? 0 : 10) + Math.abs(a - c.x)) - ((Math.sign(b - c.x) === right ? 0 : 10) + Math.abs(b - c.x)));
+    for(const tx of cands) if(force || laneClear(c, tx, ahead, obs)){ c.tx = tx; return true; }
+    return false;
+  }
+
   function update(dt){
     const list = traffic;
     for(const c of list) ensure(c);
@@ -269,6 +285,25 @@ window.Traffic = (function(){
         if(gapMin < safe){ const k = clamp((gapMin - 100)/(safe - 100), 0, 1); target = Math.min(target, lead.ownSpd*(0.80 + 0.20*k)); }
       }
       c.ownSpd += clamp(target - c.ownSpd, -90*dt, 25*dt);                  // 減速は強く、加速は穏やかに
+
+      // 渋滞を作らないための3つの決まり（v1.5.1）。以前は逆向きの車は「見えない」扱いで、
+      //   逆走気味の車と対向車が同じ車線で正面衝突 → お互い時速5kmで押し合ったまま動かない、が起きていた。
+      // (a) 同じ車線で向かってくる逆向きの車が近づいたら、先に隣の車線へよける
+      c.dodgeCool = (c.dodgeCool || 0) - dt;
+      if(c.dodgeCool <= 0){
+        for(const o of obs){
+          if(o === c || o.oncoming === c.oncoming) continue;
+          const go = geom(o); if(Math.abs(o.x - c.x) > (g.hw + go.hw)*1.05) continue;
+          const gapH = c.oncoming ? (c.z - (o.z + go.len)) : (o.z - (c.z + g.len));
+          const closing = (SpeedFx.vis(c.ownSpd) + SpeedFx.vis(Math.abs(sv(o))))*CAM_SCALE;      // 近づく速さ(ワールド/秒)
+          if(gapH > -100 && gapH < closing*1.8 + 500){ c.dodgeCool = 1.0; sidestep(c, obs, 1500, false); break; }
+        }
+      }
+      // (b) 他車とぶつかった直後は、隣の車線へ抜ける
+      if(c.dodgeCool <= 0 && Object.keys(c.cool).length){ c.dodgeCool = 1.0; sidestep(c, obs, 1200, false); }
+      // (c) 速度が巡航の35%未満の状態が3秒続いたら、空きを見ずに隣の車線へ。8秒続いたら消す（最後の手段）
+      c.stall = (c.ownSpd < 0.35*c.cruise) ? (c.stall || 0) + dt : 0;
+      if(c.stall > 3 && c.dodgeCool <= 0){ c.dodgeCool = 1.5; sidestep(c, obs, 0, true); c.ownSpd = Math.max(c.ownSpd, 0.5*c.cruise); }
 
       // 遅い前走車に詰まったら、空いていれば隣の車線へ移って追い越す（自分の側の半分の中で）
       c.passCool = (c.passCool || 0) - dt;
@@ -316,6 +351,7 @@ window.Traffic = (function(){
       // 消滅: 追い越されても、画面の下へ完全に出る(前端が下端の外)まで消さない / 描画限界の外へ離れた
       if(relZ + g.len < carCullFrontZ(car.carType)) return false;
       if(relZ > DRAW*SEGZ + SEGZ*3) return false;
+      if(car.stall > 8) return false;                                       // 8秒以上動けない車は消す（最後の手段）
 
       // 追い越し(PASS!): 自車の後端より完全に後ろへ下がった時に1回だけ
       if(!car.oncoming){

@@ -233,14 +233,17 @@ function _poly(g, pts, fill, stroke, lw) {
 // P: bw=下端の半幅, W=ベルトラインの半幅, L=全長, yb=ベルトライン高, zh=ボンネット前端の z,
 //    cw=[z,y]=カウル(フロントガラス下端), rf=[z,y]=ルーフ前端, rr=[z,y]=ルーフ後端(y は rf と同じ), xr=ルーフ半幅, tw=[z,y]=リアガラス下端
 const _CARP = {
-  ferrari328:  { bw:1.00, W:1.02, L:2.20, yb:0.62, zh:1.85, cw:[1.50,0.95], rf:[1.25,1.44], rr:[0.55,1.44], xr:0.42, tw:[0.30,0.85] },
-  f40:         { bw:1.05, W:1.07, L:2.40, yb:0.55, zh:2.00, cw:[1.65,0.85], rf:[1.40,1.22], rr:[0.65,1.22], xr:0.44, tw:[0.35,0.72] },
-  sedan:       { bw:1.00, W:1.02, L:2.50, yb:0.68, zh:2.05, cw:[1.65,1.05], rf:[1.40,1.48], rr:[0.70,1.48], xr:0.50, tw:[0.45,0.94] },
-  coupe:       { bw:1.02, W:1.04, L:2.30, yb:0.60, zh:1.95, cw:[1.55,0.92], rf:[1.35,1.40], rr:[0.62,1.40], xr:0.42, tw:[0.35,0.86] },
+  ferrari328:  { bw:1.00, W:1.02, L:2.20, yb:0.62, zh:1.85, cw:[1.50,0.95], rf:[1.25,1.44], rr:[0.55,1.44], xr:0.42, tw:[0.30,0.95] },
+  f40:         { bw:1.05, W:1.07, L:2.40, yb:0.55, zh:2.00, cw:[1.65,0.85], rf:[1.40,1.22], rr:[0.65,1.22], xr:0.44, tw:[0.35,0.85] },
+  sedan:       { bw:1.00, W:1.02, L:2.50, yb:0.68, zh:2.05, cw:[1.65,1.05], rf:[1.40,1.48], rr:[0.70,1.48], xr:0.50, tw:[0.45,1.05] },
+  coupe:       { bw:1.02, W:1.04, L:2.30, yb:0.60, zh:1.95, cw:[1.55,0.92], rf:[1.35,1.40], rr:[0.62,1.40], xr:0.42, tw:[0.35,0.92] },
   // 80年代の日本車セダン（3ボックス: 平らなボンネット・立ったガラス・独立したトランク）
-  compact80:   { bw:1.00, W:1.01, L:2.35, yb:0.70, zh:2.12, cw:[1.78,0.86], rf:[1.50,1.50], rr:[0.66,1.50], xr:0.64, tw:[0.42,0.82] },   // 小型セダン（カローラ/シビック級）
-  saloon80:    { bw:1.02, W:1.03, L:2.75, yb:0.68, zh:2.45, cw:[2.02,0.86], rf:[1.64,1.40], rr:[0.78,1.40], xr:0.60, tw:[0.44,0.80] },   // 中型ハードトップ（マークII/クレスタ級: 低く長い）
-  executive80: { bw:1.03, W:1.04, L:2.85, yb:0.74, zh:2.55, cw:[2.06,0.92], rf:[1.72,1.55], rr:[0.80,1.55], xr:0.66, tw:[0.46,0.88] },   // 大型セダン（クラウン/セドリック級: 背が高く箱型）
+  // 3車種は「長さ・高さ・屋根・窓・ランプ・色」をはっきり変えて見分けがつくようにしてある
+  //   win: 'split'=前後ドアの窓がBピラーで分かれる / 'hardtop'=ピラーレスで窓が1枚  roofT: 'roofDark'=黒いビニールレザー風の屋根
+  //   lamp: テールランプの形（small=小さな角型 / bar=横一文字 / big=大きな角型 / 省略=標準）
+  compact80:   { bw:0.98, W:0.99, L:2.25, yb:0.70, zh:2.02, cw:[1.70,0.88], rf:[1.44,1.52], rr:[0.62,1.52], xr:0.62, tw:[0.40,0.88], lamp:'small' },                     // 小型セダン（カローラ/シビック級: 短く背が高い）
+  saloon80:    { bw:1.03, W:1.04, L:2.85, yb:0.66, zh:2.55, cw:[2.10,0.84], rf:[1.70,1.36], rr:[0.70,1.36], xr:0.58, tw:[0.30,0.84], lamp:'bar', win:'hardtop' },     // 中型ハードトップ（マークII/クレスタ級: 低く長い・ピラーレス）
+  executive80: { bw:1.04, W:1.05, L:2.95, yb:0.76, zh:2.65, cw:[2.12,0.96], rf:[1.80,1.60], rr:[0.82,1.60], xr:0.68, tw:[0.50,0.96], lamp:'big', roofT:'roofDark' },  // 大型セダン（クラウン/セドリック級: 背が高く箱型・黒い屋根）
 };
 function _carVerts(P) {
   const V = {}, both = (n, x, y, z) => { V[n + 'L'] = [-x, y, z]; V[n + 'R'] = [x, y, z]; };
@@ -249,7 +252,7 @@ function _carVerts(P) {
   both('BH', P.W, P.yb, 0); both('BHF', P.W, P.yb, P.zh);
   both('CW', X(P.cw[1]), P.cw[1], P.cw[0]);
   both('RF', P.xr, P.rf[1], P.rf[0]); both('RR', P.xr, P.rf[1], P.rr[0]);
-  both('TW', X(P.tw[1]), P.tw[1], P.tw[0]);
+  both('TW', X(P.cw[1]), P.cw[1], P.tw[0]);                 // リアガラスの下端は、カウル（フロントガラスの下端）と同じ高さ＝窓の下辺(ガラスライン)をそろえる
   both('MB', P.W, P.yb, m); both('MR', P.xr, P.rf[1], m);        // 側面を前後に割る線（Bピラー）の両端
   return V;
 }
@@ -268,7 +271,7 @@ function _carFaces(P, V, extra) {
     F(['BHFR','BHFL','BFL','BFR'], 'body'),                                                              // 鼻
     F(['BHFL','BHFR','CWR','CWL'], 'body'),                                                              // ボンネット
     F(['CWL','CWR','RFR','RFL'], 'glass'),                                                               // フロントガラス
-    F(['RRR','RRL','RFL','RFR'], 'roof'),
+    F(['RRR','RRL','RFL','RFR'], P.roofT || 'roof'),
     F(['RRL','RRR','TWR','TWL'], 'glass'),                                                               // リアガラス
     F(['TWL','TWR','BHR','BHL'], 'body'),                                                                // トランク
     // グリーンハウスの側面（平面）を Bピラーの線で前後2枚に
@@ -375,6 +378,9 @@ function _drawFace(g, camPts, face, bodyCol, glowCol, cxAccPx) {
       break;
     case 'roof':
       _poly(g, fp, _shade(bodyCol, face.ny, face.nz, 1.0), _hexA(glowCol, 0.18), lw);
+      break;
+    case 'roofDark':
+      _poly(g, fp, _shade('#141824', face.ny, face.nz, 1.0), _hexA(glowCol, 0.18), lw);   // 黒い屋根（ビニールレザー風）
       break;
     case 'sideL':
       // 左側面: 光源から遠め（暗め）— alphaは常に1.0、暗さはlumのみで表現
@@ -495,28 +501,32 @@ function _decalsOf(carType) {
     const M = _MESH[carType] || _MESH.ferrari328, V = M.V, P = M.P, FACES = M.F;
     const hostKey = ks => { const set = ks.slice().sort().join(); return FACES.find(f => f.k.slice().sort().join() === set).k.join(','); };
     const onHost = (ks, specs) => { const hk = hostKey(ks); return _hostDecals(V, ks, specs).map(d => (d.hosts = [hk], d)); };
-    out = onHost(['BRR','BRL','BHL','BHR'], [                // 後面パネル
-      ['tail',   .05,.27, .34,.84], ['tail',   .73,.95, .34,.84],
-      ['tailHi', .05,.15, .58,.84], ['tailHi', .85,.95, .58,.84],
-      ['brake',  .43,.57, .86,.95],
-      ['plate',  .36,.64, .08,.42],
-    ]).concat(onHost(['BHFR','BHFL','BFL','BFR'], [           // 前面ノーズ（斜面）
+    const LAMPS = {
+      std:   [['tail', .05,.27, .34,.84], ['tail', .73,.95, .34,.84], ['tailHi', .05,.15, .58,.84], ['tailHi', .85,.95, .58,.84], ['brake', .43,.57, .86,.95]],
+      small: [['tail', .04,.17, .46,.78], ['tail', .83,.96, .46,.78], ['tailHi', .04,.10, .56,.78], ['tailHi', .90,.96, .56,.78]],
+      bar:   [['tail', .05,.95, .56,.76], ['tailHi', .05,.95, .64,.68]],
+      big:   [['tail', .04,.31, .26,.86], ['tail', .69,.96, .26,.86], ['tailHi', .04,.12, .40,.86], ['tailHi', .88,.96, .40,.86], ['brake', .42,.58, .88,.95]],
+    };
+    out = onHost(['BRR','BRL','BHL','BHR'], (LAMPS[P.lamp] || LAMPS.std).concat([['plate', .36,.64, .08,.42]])
+    ).concat(onHost(['BHFR','BHFL','BFL','BFR'], [           // 前面ノーズ（斜面）
       ['head',   .06,.28, .20,.70], ['head',   .72,.94, .20,.70],
       ['headHi', .06,.16, .30,.60], ['headHi', .84,.94, .30,.60],
     ]));
     // 側面の窓: グリーンハウスの平面の上に 前席ドア窓 と 後席ドア窓（Bピラー=前後の割れ目を挟む）
-    const yb = P.yb, ry = P.rf[1], yw0 = yb + 0.12*(ry - yb), yw1 = ry - 0.06*(ry - yb), mz = (P.rf[0] + P.rr[0]) / 2, pil = 0.05;
+    const yb = P.yb, ry = P.rf[1], yw0 = P.cw[1], yw1 = ry, mz = (P.rf[0] + P.rr[0]) / 2, pil = 0.05;   // 窓の下辺=ガラスライン(フロント/リアガラスの下端と同じ高さ)・上辺=ルーフの縁
     const s = (P.W - P.xr) / (ry - yb), X = y => P.W - s * (y - yb);
     const lerpZ = (a, b, y) => a[0] + (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]);
     const BHF = [P.zh, yb], CW = P.cw, RF = P.rf, RR = P.rr, TW = P.tw, BH = [0, yb];
     const zFront = y => (y >= CW[1] ? lerpZ(CW, RF, y) : lerpZ(BHF, CW, y)) - 0.06;     // Aピラー側の縁（内側へ少し）
     const zRear  = y => (y >= TW[1] ? lerpZ(RR, TW, y) : lerpZ(BH, TW, y)) + 0.06;      // Cピラー側の縁
-    const wins = [ [[zFront(yw0), yw0], [zFront(yw1), yw1], [mz + pil, yw1], [mz + pil, yw0]],
-                   [[mz - pil, yw0], [mz - pil, yw1], [zRear(yw1), yw1], [zRear(yw0), yw0]] ];
+    const wins = P.win === 'hardtop'
+      ? [ [[zFront(yw0), yw0], [zFront(yw1), yw1], [zRear(yw1), yw1], [zRear(yw0), yw0]] ]                    // ピラーレス: 1枚（Bピラー線をまたぐ）
+      : [ [[zFront(yw0), yw0], [zFront(yw1), yw1], [mz + pil, yw1], [mz + pil, yw0]],
+          [[mz - pil, yw0], [mz - pil, yw1], [zRear(yw1), yw1], [zRear(yw0), yw0]] ];
     const sideKeys = { R:[['BHFR','CWR','RFR','MRR','MBR'], ['MBR','MRR','RRR','TWR','BHR']], L:[['BHFL','CWL','RFL','MRL','MBL'], ['MBL','MRL','RRL','TWL','BHL']] };
     for (const sd of ['R','L']) {
       const sg = sd === 'R' ? 1 : -1, o = [sg, s, 0];
-      wins.forEach((w, i) => out.push(_mkDecal('glass', [hostKey(sideKeys[sd][i])], o, w.map(q => [sg*X(q[1]), q[1], q[0]]))));
+      wins.forEach((w, i) => out.push(_mkDecal('glass', P.win === 'hardtop' ? sideKeys[sd].map(hostKey) : [hostKey(sideKeys[sd][i])], o, w.map(q => [sg*X(q[1]), q[1], q[0]]))));
     }
   }
   return (_DECAL_CACHE[carType] = out);

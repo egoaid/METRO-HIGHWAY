@@ -1,7 +1,7 @@
 // ════════════════════════════════════════════════
 // VFD RACING — 星のボーナス（無敵）
 //
-//  ・走行距離が STAR_FIRST_DIST(5km) を超えると、道路に星が落ちる。以後 0.7〜1.4km ごとに次の星。
+//  ・走行距離が STAR_FIRST_DIST(3km) を超えると、道路に星が落ちる。以後 STAR_EVERY(1.6〜2.4km) ごとに次の星。
 //    （同時に最大3つ。レーンはランダム。道路に固定され、自車が近づくと手前へ流れてくる）
 //  ・星は立体（五角形の星を押し出した形）で、ゆっくり回転し、少し光り輝く。上下にもゆっくり浮き沈みする。
 //  ・自車が星の上を通ると取得 → INV_TIME(8秒)の無敵。ハートは減らない。残り2秒で自車が点滅して知らせる。
@@ -46,7 +46,7 @@ window.StarBonus = (function(){
     if(player.inv > 0) player.inv = Math.max(0, player.inv - dt);
     if(game.nextStar > 0 && game.dist >= game.nextStar){
       spawnStar();
-      game.nextStar += rr(700, 1400);
+      game.nextStar += rr(STAR_EVERY[0], STAR_EVERY[1]);
     }
     bonusStars = bonusStars.filter(s => {
       const relZ = s.z - cam.pos;

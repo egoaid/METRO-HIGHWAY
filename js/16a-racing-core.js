@@ -79,15 +79,17 @@ const LANES_FWD=[0.22,0.66];
 const LANES_ONC=[-0.22,-0.66];
 const PLAYER_START_X=0.44;       // 開始位置: 右半分（自車線）の中央
 // 走行距離が STAR_FIRST_DIST(m) を超えると、道路に星が落ちる（16j-racing-star.js）。取ると INV_TIME 秒だけ無敵。
-const STAR_FIRST_DIST=5000;
+// v1.5.1: 5km を超えると星が毎km出て無敵だらけになり、難しさが下がっていた。星もハートも「約2kmに1個」にした（星は3kmから、ハートは1km付近から。ずらしてある）
+const STAR_FIRST_DIST=3000;
+const STAR_EVERY=[1600,2400];     // 次の星までの距離の範囲(m)（平均 2000m）
 const INV_TIME=8;                // 無敵時間(秒)
 const INV_BOOST=2.2;             // 無敵中に衝突された他車の揺れの倍率
 let bonusStars=[];
 // 道路にときどき落ちているハート（16k-racing-heart.js）。取ると HP が HEART_HEAL(=ハート半分)回復。
-// 出現は 約 HEART_EVERY(m) に1個（1km に1個程度）。最初の1個は HEART_FIRST(m) 付近。
+// 出現は 約 HEART_EVERY(m) に1個（2km に1個程度）。最初の1個は HEART_FIRST(m) 付近。
 const HEART_HEAL=0.5;
-const HEART_FIRST=[400,800];     // 最初のハートまでの距離の範囲(m)
-const HEART_EVERY=[800,1200];    // 次のハートまでの距離の範囲(m)（平均 1000m）
+const HEART_FIRST=[800,1400];    // 最初のハートまでの距離の範囲(m)
+const HEART_EVERY=[1600,2400];   // 次のハートまでの距離の範囲(m)（平均 2000m）
 let bonusHearts=[];
 const cam={pos:0};
 const player={x:0,xv:0,speed:0,bank:0,
@@ -389,7 +391,7 @@ function projFull(worldZ,cxAcc){
 // ── 他車の寸法・画面外判定・衝突判定（描画と必ず同じ基準を使う）──
 // モデルのローカル最大寸法（高さ y・長さ z）。実寸 = 値 × WORLD_CAR_HALF_W × TYPE_SCALE（16c）。
 // 車体は「後端が Zw、前端が Zw+長さ」（ローカル z=0 が後端）。
-const CAR_LOCAL={ferrari328:{y:1.44,z:2.2},f40:{y:1.22,z:2.4},sedan:{y:1.48,z:2.5},coupe:{y:1.40,z:2.3},compact80:{y:1.50,z:2.35},saloon80:{y:1.40,z:2.75},executive80:{y:1.55,z:2.85},truck:{y:1.69,z:4.5}};
+const CAR_LOCAL={ferrari328:{y:1.44,z:2.2},f40:{y:1.22,z:2.4},sedan:{y:1.48,z:2.5},coupe:{y:1.40,z:2.3},compact80:{y:1.52,z:2.25},saloon80:{y:1.36,z:2.85},executive80:{y:1.60,z:2.95},truck:{y:1.69,z:4.5}};
 function carWorldSize(type){
   const k=(typeof WORLD_CAR_HALF_W==='number'?WORLD_CAR_HALF_W:312.5)
          *((typeof TYPE_SCALE!=='undefined'&&TYPE_SCALE[type])||1);
