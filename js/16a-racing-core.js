@@ -92,9 +92,11 @@ const HEART_FIRST=[800,1400];    // 最初のハートまでの距離の範囲(m
 const HEART_EVERY=[1600,2400];   // 次のハートまでの距離の範囲(m)（平均 2000m）
 let bonusHearts=[];
 // 道路に落ちているコイン（16m-racing-coin.js）。1枚=COIN_VALUE。貯めたコインでガレージ（16l）の車を買う。
-// コインは「自車線の2レーン」に、5〜6枚の列（直線 or 斜め）で置く。取ろうとして車線を変えること自体が、
+// コインは 5〜6枚の列（直線 or 斜め）で、多くは自車線の2レーン、約 COIN_ONC_P は対向車線の2レーン（1枚 COIN_ONC_VALUE）に置く。取ろうとして車線を変えること自体が、
 // 衝突の危険を増やす（取るか避けるかの判断がゲームの難しさになる）。約 COIN_EVERY(m) ごとに1列。
 const COIN_VALUE=1;
+const COIN_ONC_P=0.25;           // コイン列が対向車線に置かれる確率（対向車線は逆向きの車が来るので危ない）
+const COIN_ONC_VALUE=2;          // 対向車線のコイン1枚の価値（危険に見合う報酬）
 const COIN_FIRST=[150,300];      // 最初のコイン列までの距離の範囲(m)
 const COIN_EVERY=[300,500];      // 次のコイン列までの距離の範囲(m)（平均 400m ≒ 1kmに6枚前後を取れる）
 let bonusCoins=[];
@@ -126,7 +128,9 @@ window.addEventListener('keydown',e=>{
   if(e.key==='ArrowRight'){keys.R=true;e.preventDefault();}
   if(e.key==='ArrowUp')   {keys.U=true;e.preventDefault();}
   if(e.key==='ArrowDown') {keys.D=true;e.preventDefault();}
-  if(mode!==MODE.PLAY&&typeof Garage!=='undefined'){   // タイトル/ゲームオーバー画面: ←→ で車を選ぶ
+  // タイトル画面だけ: ←→ で車を選ぶ。キーの自動リピート(e.repeat)は無視する
+  //（走行中に押しっぱなしだった ←→ が、ゲームオーバー後にリピートして車種が次々に変わるバグの原因だった）
+  if(mode===MODE.DEMO&&!e.repeat&&typeof Garage!=='undefined'){
     if(e.key==='ArrowLeft'){Garage.select(-1);}
     if(e.key==='ArrowRight'){Garage.select(1);}
   }

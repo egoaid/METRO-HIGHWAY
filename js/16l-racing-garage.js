@@ -10,6 +10,8 @@
 //    車体の大きさ（長さ・幅）は車種の3Dモデルのまま＝当たり判定も車ごとに違う（長い車ほど前後の余裕が要る）。
 //  ・カーブ: 以前は「速度に比例する弱い横流れ」で簡単だった。今は 速度の2乗に比例して外へ流される
 //    （流れ = カーブ × K × (速度/220)² ÷ grip）。高速でカーブに入るほど急にきつくなるので、ブレーキと車選びが効く。
+//  ・管理者デバッグモード（全車種を購入せずに選べる）: URL に ?admin=1 を付けて開く、またはタイトル画面で Alt+Shift+A で切り替え。
+//    購入済みの記録は変えない（保存されるのはコインと本当に買った車だけ）。この表示に「ADMIN」と出る。通常のプレイヤーには案内しない。
 // 公開: window.Garage
 // ════════════════════════════════════════════════
 window.Garage = (function(){
@@ -38,6 +40,8 @@ window.Garage = (function(){
   const RANGE = { vmax:[180,260], accel:[45,100], handling:[0.75,1.35], brake:[130,200], grip:[0.8,1.3], mass:[0.6,1.9] };
   const LABEL = { vmax:'SPEED', accel:'ACCEL', handling:'HANDLING', brake:'BRAKE', grip:'GRIP', mass:'WEIGHT' };
 
+  let admin = false;
+  try{ admin = /[?&#]admin=1(\b|$)/.test((location.search||'') + (location.hash||'')); }catch(_){}
   let st = { coins:0, owned:['f328'], sel:'f328' };
   let view = 0;                                                  // タイトル画面で見ている車の番号
   let msg = '', msgT = 0;
@@ -58,7 +62,7 @@ window.Garage = (function(){
   function save(){ try{ localStorage.setItem(KEY, JSON.stringify(st)); }catch(_){} }
   load();
 
-  const owned = id => st.owned.includes(id);
+  const owned = id => admin || st.owned.includes(id);        // 管理者モードでは全車種が使える（記録は変えない）
   const viewCar = () => CARS[view];
   const selCar  = () => CARS.find(c => c.id === st.sel) || CARS[0];
   // 画面に出す車（PLAY中は選んだ車、タイトル中は見ている車）
@@ -91,7 +95,7 @@ window.Garage = (function(){
   // 開始前の確認: 持っている車なら選択して true。持っていなければ購入を試みて false（開始しない）
   function ready(){
     const c = viewCar();
-    if(owned(c.id)){ st.sel = c.id; save(); applyGeom(c); return true; }
+    if(owned(c.id)){ st.sel = c.id; if(!admin) save(); applyGeom(c); return true; }
     if(st.coins >= c.price){
       st.coins -= c.price; st.owned.push(c.id); st.sel = c.id; save();
       say(`PURCHASED ${c.name}!  PRESS AGAIN TO START`);
@@ -148,7 +152,8 @@ window.Garage = (function(){
     g.textAlign = 'center'; g.font = `${Math.round(fs*0.95)}px 'Share Tech Mono',monospace`;
     const ay = py + ph*0.90;
     let label, col;
-    if(ok){ label = (c.id === st.sel ? 'OWNED  ·  SELECTED' : 'OWNED'); col = '#5df0c8'; }
+    if(admin && !st.owned.includes(c.id)){ label = 'ADMIN  ·  UNLOCKED'; col = '#ff7bd0'; }
+    else if(ok){ label = (c.id === st.sel ? 'OWNED  ·  SELECTED' : 'OWNED'); col = '#5df0c8'; }
     else if(st.coins >= c.price){ label = `BUY  ◎ ${c.price}`; col = '#ffd23a'; }
     else { label = `◎ ${c.price}   NEED ${c.price - st.coins} MORE`; col = '#ff7060'; }
     g.fillStyle = col; g.shadowColor = col;
@@ -158,11 +163,14 @@ window.Garage = (function(){
     g.textAlign = 'right'; g.fillStyle = '#ffd23a'; g.shadowColor = '#ffd23a';
     g.font = `${Math.round(fs)}px 'Share Tech Mono',monospace`;
     g.fillText(`◎ ${st.coins}`, px + pw - 8, py - fs*0.8);
+    if(admin){ g.textAlign = 'left'; g.fillStyle = '#ff7bd0'; g.shadowColor = '#ff7bd0'; g.fillText('ADMIN MODE', px + 8, py - fs*0.8); }
     g.restore();
   }
 
   // タップ（clientX/Y）: 矢印なら車を切り替えて true / 購入ボタン（未購入の車）なら購入して true / それ以外は false（呼び出し側が開始）
   function handleTap(cx, cy){
+    // パネルが出ているのはタイトル画面だけ。走行中やゲームオーバー中の画面タップ（操舵の指など）で車が変わらないようにする
+    if(typeof mode === 'undefined' || mode !== MODE.DEMO) return false;
     if(typeof cv === 'undefined' || !cv) return false;
     const r = cv.getBoundingClientRect(); if(!r.width) return false;
     const x = (cx - r.left)*(W/r.width), y = (cy - r.top)*(H/r.height);       // 描画座標(W×H)へ
@@ -173,8 +181,16 @@ window.Garage = (function(){
     return false;
   }
 
+  // 管理者モードの切り替え（タイトル画面で Alt+Shift+A）
+  try{ window.addEventListener('keydown', e => {
+    if(e.altKey && e.shiftKey && (e.code === 'KeyA' || e.key === 'A' || e.key === 'a') && typeof mode !== 'undefined' && mode === MODE.DEMO){
+      admin = !admin; if(!admin && !st.owned.includes(st.sel)) st.sel = 'f328';
+      say(admin ? 'ADMIN MODE: ALL CARS UNLOCKED' : 'ADMIN MODE OFF'); e.preventDefault();
+    }
+  }); }catch(_){}
+
   return { CARS, RANGE, stats, shownCar, visScale, fit, viewCar, selCar, select, ready, canStart, owned, addCoins,
            onGameOver, drawPanel, handleTap, applyToPlayer,
-           coins(){ return st.coins; }, _state(){ return st; }, _reset(s){ st = Object.assign({ coins:0, owned:['f328'], sel:'f328' }, s || {}); view = Math.max(0, CARS.findIndex(c => c.id === st.sel)); },
+           coins(){ return st.coins; }, isAdmin(){ return admin; }, _setAdmin(v){ admin = !!v; }, _state(){ return st; }, _reset(s){ st = Object.assign({ coins:0, owned:['f328'], sel:'f328' }, s || {}); view = Math.max(0, CARS.findIndex(c => c.id === st.sel)); },
            SPD_REF, CURVE_K };
 })();

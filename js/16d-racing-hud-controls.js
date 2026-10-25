@@ -17,12 +17,6 @@ function drawHUD(g,bpm){
   g.font=`bold ${Math.round(H*0.052)}px 'Share Tech Mono',monospace`;
   g.fillText(songTxt,W*0.03,H*0.148);
   g.shadowBlur=0;g.textAlign='left';
-  if(typeof Garage!=='undefined'){
-    Garage.drawPanel(g);                                        // 車の選択・購入パネル（← → で選ぶ）
-    g.font=`${Math.round(H*0.024)}px 'Share Tech Mono',monospace`;g.textAlign='center';g.fillStyle='rgba(93,240,200,0.40)';
-    g.fillText(IS_TOUCH_DEVICE?'TAP ◀ ▶ TO CHOOSE A CAR':'← → CHOOSE A CAR',W*0.5,H*0.285+H*0.30+H*0.035);
-    g.textAlign='left';
-  }
 }
 function drawGameHUD(g){
   const fs=Math.round(H*0.032);
@@ -32,6 +26,7 @@ function drawGameHUD(g){
   g.fillText(`◎ ${game.coins}`,W*0.03,H*0.31);
   g.fillStyle='rgba(255,210,58,0.55)';g.font=`${Math.round(H*0.024)}px 'Share Tech Mono',monospace`;
   g.fillText(`TOTAL ${Garage.coins()}`,W*0.03,H*0.345);
+  if(Garage.isAdmin()){g.fillStyle='#ff7bd0';g.shadowColor='#ff7bd0';g.fillText('ADMIN',W*0.03,H*0.375);}
   g.shadowColor='#5df0c8';g.shadowBlur=4;
   // HP ハート（0.5刻み: 半分のハートは左半分だけ赤く塗る）。ハートを取った直後は一瞬光る
   g.font=`${Math.round(H*0.048)}px serif`;
@@ -81,6 +76,12 @@ function drawDemoOverlay(g){
     g.fillText('ROTATE TO LANDSCAPE FOR BEST VIEW',W*0.5,H*0.25+Math.round(W*0.06));
   }
   g.shadowBlur=0;g.textAlign='left';
+  if(typeof Garage!=='undefined'){
+    Garage.drawPanel(g);                                        // 車の選択・購入パネル（タイトル画面だけ。開始後は出さない）
+    g.font=`${Math.round(H*0.024)}px 'Share Tech Mono',monospace`;g.textAlign='center';g.fillStyle='rgba(93,240,200,0.40)';
+    g.fillText(IS_TOUCH_DEVICE?'TAP ◀ ▶ TO CHOOSE A CAR':'← → CHOOSE A CAR',W*0.5,H*0.285+H*0.30+H*0.035);
+    g.textAlign='left';
+  }
 }
 function drawGameOver(){
   g.fillStyle='rgba(0,4,8,0.72)';g.fillRect(0,H*0.25,W,H*0.35);

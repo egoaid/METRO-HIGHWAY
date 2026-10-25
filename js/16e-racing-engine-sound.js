@@ -1,113 +1,169 @@
 
 
 // ════════════════════════════════════
-// レトロ走行音・衝突音 (Web Audio API)
-// V8エンジン風の低い唸り + マフラー音
+// 走行音・衝突音 (Web Audio API)
+//
+// エンジン音（v1.7.0 で作り直し）。車ごとに「気筒数・回転数・音色」が違う。
+//  ・回転数 rpm は 速度とギアから決める（ギアごとに速度の範囲があり、アップシフトで回転が落ちてまた上がる）。
+//  ・基本の音は「点火の周波数」 f0 = rpm/60 × 気筒数/2 （4ストロークは1回転で気筒数/2回点火）。
+//    V8 の 7600rpm なら約507Hz、アイドルの 950rpm なら約63Hz。ここに、排気の脈動に近い倍音の並び
+//    （PeriodicWave: 倍音 n の強さ n^-p、奇数次の強調 odd）を持つ波を使う。
+//  ・重ねる音: ①排気の主音 ②半次数のうねり（V8の「ボボボ」: f0/2）③少しずらした二重音（不揃いな点火の厚み）
+//    ④吸気ノイズ（回転とアクセルで明るくなる）⑤高回転のメカ音 ⑥ターボの笛と、アクセルを戻した時のブローオフ（F40）
+//  ・アクセルを踏むと音が明るく大きく、離すとこもって小さくなる（エンジンブレーキ）。
+// 車ごとの設定は ENGINES（キーは 16l の車の id）。
 // ════════════════════════════════════
 let sndCtx = null;
 let sndReady = false;
-// エンジン音ノード群
-let eng1Osc=null, eng1Gain=null;  // 基音(低い唸り)
-let eng2Osc=null, eng2Gain=null;  // 第2高調波
-let eng3Osc=null, eng3Gain=null;  // 第3高調波(倍音)
-let engMaster=null;               // マスターゲイン
-let roadNoiseNode=null, roadNoiseGain=null; // ロードノイズ
-let lastGear=-1;
+let eng = null;                    // エンジン音のノード一式（initSound で作る）
+let roadNoiseGain=null;            // ロードノイズ
+const ENGINES = {
+  //            cyl: 気筒数  idle/red: アイドル/レッドゾーンの rpm  gears: 段数  p: 倍音の減衰（小さいほど明るい）  odd: 奇数次の強調
+  //            lump: 半次数のうねり  drive: 歪み  cut: 音の明るさ（ローパスの下限/上限Hz）  vol: 音量  intake/whine: 吸気/メカ音  turbo: ターボ
+  f328:      { cyl:8, idle:950,  red:7600, gears:5, p:1.15, odd:1.0, lump:0.16, drive:1.6, cut:[500,3800], vol:1.00, intake:0.9, whine:0.5, turbo:0 },   // フラットプレーン風V8: 高く抜ける
+  compact:   { cyl:4, idle:850,  red:6800, gears:5, p:1.00, odd:1.6, lump:0.04, drive:1.3, cut:[600,4200], vol:0.85, intake:1.3, whine:0.9, turbo:0 },   // 直4: 細くブンブン
+  coupe:     { cyl:4, idle:1000, red:8800, gears:5, p:0.80, odd:0.8, lump:0.00, drive:1.0, cut:[900,6200], vol:0.90, intake:0.8, whine:1.5, turbo:0 },   // 高回転型（ロータリー風）: 滑らかに甲高い
+  saloon:    { cyl:6, idle:750,  red:6200, gears:4, p:1.50, odd:1.0, lump:0.03, drive:1.1, cut:[400,2600], vol:0.90, intake:0.7, whine:0.3, turbo:0 },   // 直6: 絹のように滑らか
+  executive: { cyl:8, idle:650,  red:5200, gears:4, p:1.70, odd:0.8, lump:0.45, drive:1.9, cut:[300,1900], vol:1.15, intake:0.6, whine:0.1, turbo:0 },   // 大排気量V8: 低く太いボボボ
+  f40:       { cyl:8, idle:1000, red:8200, gears:5, p:1.00, odd:1.1, lump:0.22, drive:2.2, cut:[600,5200], vol:1.05, intake:1.0, whine:0.8, turbo:1 },   // ツインターボV8: 荒々しい+ターボの笛+ブローオフ
+};
+const engState = { prof:null, load:0, boost:0, gear:-1, shiftT:0, lastThrottle:0 };
+
+function engProfileId(){ return (typeof Garage!=='undefined' && Garage.selCar && ENGINES[Garage.selCar().id]) ? Garage.selCar().id : 'f328'; }
+
+// 排気の脈動に近い倍音の波（odd: 奇数次を odd 倍、p: n^-p で減衰）
+function makeEngineWave(P){
+  const N = 40, re = new Float32Array(N + 1), im = new Float32Array(N + 1);
+  for(let n = 1; n <= N; n++) im[n] = Math.pow(n, -P.p) * (n % 2 ? P.odd : 1);
+  return sndCtx.createPeriodicWave(re, im);
+}
 
 function initSound(){
   if(sndReady) return;
   try {
     sndCtx = new (window.AudioContext||window.webkitAudioContext)();
-
-    // マスターゲイン → コンプレッサー → destination
     const comp = sndCtx.createDynamicsCompressor();
     comp.threshold.value=-12; comp.ratio.value=4;
     comp.connect(sndCtx.destination);
 
-    engMaster = sndCtx.createGain();
-    engMaster.gain.value=0;
-    engMaster.connect(comp);
-
-    // ── 基音: のこぎり波を強くディストーション ──
-    // V8は点火が不均等で独特の音→基音を低く+倍音豊かに
-    eng1Gain = sndCtx.createGain(); eng1Gain.gain.value=0.55;
-    eng1Osc  = sndCtx.createOscillator();
-    eng1Osc.type='sawtooth'; eng1Osc.frequency.value=45;
-    // ウェーブシェーパーで倍音を増やす
-    const ws1 = sndCtx.createWaveShaper();
-    const c1  = new Float32Array(512);
-    for(let i=0;i<512;i++){const x=i/256-1; c1[i]=Math.tanh(x*3.5)*0.7+Math.sin(x*Math.PI)*0.3;}
-    ws1.curve=c1;
-    eng1Osc.connect(ws1); ws1.connect(eng1Gain); eng1Gain.connect(engMaster);
-
-    // ── 第2高調波: 矩形波(排気音の"ぼぼぼ"感) ──
-    eng2Gain = sndCtx.createGain(); eng2Gain.gain.value=0.30;
-    eng2Osc  = sndCtx.createOscillator();
-    eng2Osc.type='square'; eng2Osc.frequency.value=90;
-    const lp2 = sndCtx.createBiquadFilter();
-    lp2.type='lowpass'; lp2.frequency.value=800; lp2.Q.value=2.5;
-    eng2Osc.connect(lp2); lp2.connect(eng2Gain); eng2Gain.connect(engMaster);
-
-    // ── 第3高調波: 三角波(高回転の唸り) ──
-    eng3Gain = sndCtx.createGain(); eng3Gain.gain.value=0.12;
-    eng3Osc  = sndCtx.createOscillator();
-    eng3Osc.type='triangle'; eng3Osc.frequency.value=135;
-    eng3Osc.connect(eng3Gain); eng3Gain.connect(engMaster);
-
-    // ── ロードノイズ(タイヤ+風切り) ──
-    const nBuf = sndCtx.createBuffer(1, sndCtx.sampleRate*3, sndCtx.sampleRate);
-    const nd   = nBuf.getChannelData(0);
+    const master = sndCtx.createGain(); master.gain.value=0; master.connect(comp);
+    const noiseBuf = sndCtx.createBuffer(1, sndCtx.sampleRate*3, sndCtx.sampleRate), nd = noiseBuf.getChannelData(0);
     for(let i=0;i<nd.length;i++) nd[i]=Math.random()*2-1;
-    roadNoiseNode = sndCtx.createBufferSource();
-    roadNoiseNode.buffer=nBuf; roadNoiseNode.loop=true;
-    const nFilt = sndCtx.createBiquadFilter();
-    nFilt.type='bandpass'; nFilt.frequency.value=300; nFilt.Q.value=0.6;
-    roadNoiseGain = sndCtx.createGain(); roadNoiseGain.gain.value=0;
-    roadNoiseNode.connect(nFilt); nFilt.connect(roadNoiseGain); roadNoiseGain.connect(engMaster);
+    const noise = () => { const n = sndCtx.createBufferSource(); n.buffer=noiseBuf; n.loop=true; return n; };
 
-    eng1Osc.start(); eng2Osc.start(); eng3Osc.start(); roadNoiseNode.start();
+    // ①排気の主音: 脈動波 → 歪み → ローパス
+    const main = sndCtx.createOscillator(); main.frequency.value=60;
+    const shaper = sndCtx.createWaveShaper(), curve = new Float32Array(512);
+    shaper.curve = curve;                                     // 歪みの強さは車ごと（applyEngineProfile で作り直す）
+    const lp = sndCtx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=1500; lp.Q.value=1.2;
+    const mainG = sndCtx.createGain(); mainG.gain.value=0.6;
+    main.connect(shaper); shaper.connect(lp); lp.connect(mainG); mainG.connect(master);
+    // ②半次数のうねり（V8の「ボボボ」）
+    const lump = sndCtx.createOscillator(); lump.type='triangle'; lump.frequency.value=30;
+    const lumpG = sndCtx.createGain(); lumpG.gain.value=0; lump.connect(lumpG); lumpG.connect(master);
+    // ③少しずらした二重音（不揃いな点火の厚み）
+    const twin = sndCtx.createOscillator(); twin.frequency.value=60;
+    const twinLp = sndCtx.createBiquadFilter(); twinLp.type='lowpass'; twinLp.frequency.value=1200; twinLp.Q.value=0.7;
+    const twinG = sndCtx.createGain(); twinG.gain.value=0.25; twin.connect(twinLp); twinLp.connect(twinG); twinG.connect(master);
+    // ④吸気ノイズ
+    const inN = noise(), inBp = sndCtx.createBiquadFilter(); inBp.type='bandpass'; inBp.frequency.value=500; inBp.Q.value=0.8;
+    const inG = sndCtx.createGain(); inG.gain.value=0; inN.connect(inBp); inBp.connect(inG); inG.connect(master);
+    // ⑤高回転のメカ音
+    const whN = noise(), whBp = sndCtx.createBiquadFilter(); whBp.type='bandpass'; whBp.frequency.value=3000; whBp.Q.value=4;
+    const whG = sndCtx.createGain(); whG.gain.value=0; whN.connect(whBp); whBp.connect(whG); whG.connect(master);
+    // ⑥ターボの笛 とブローオフ
+    const tur = sndCtx.createOscillator(); tur.type='sine'; tur.frequency.value=2000;
+    const turG = sndCtx.createGain(); turG.gain.value=0; tur.connect(turG); turG.connect(master);
+    const boN = noise(), boBp = sndCtx.createBiquadFilter(); boBp.type='bandpass'; boBp.frequency.value=2600; boBp.Q.value=0.9;
+    const boG = sndCtx.createGain(); boG.gain.value=0; boN.connect(boBp); boBp.connect(boG); boG.connect(master);
+
+    // ロードノイズ（タイヤ+風切り）
+    const rn = noise(), rBp = sndCtx.createBiquadFilter(); rBp.type='bandpass'; rBp.frequency.value=300; rBp.Q.value=0.6;
+    roadNoiseGain = sndCtx.createGain(); roadNoiseGain.gain.value=0;
+    rn.connect(rBp); rBp.connect(roadNoiseGain); roadNoiseGain.connect(master);
+
+    eng = { master, main, shaper, curve, lp, mainG, lump, lumpG, twin, twinLp, twinG, inBp, inG, whBp, whG, tur, turG, boG };
+    [main, lump, twin, tur, inN, whN, boN, rn].forEach(n => n.start());
     sndReady=true;
+    engState.prof = null; engState.gear = -1;
   } catch(e){ sndReady=false; }
 }
 
+// 車（プロファイル）を切り替えた時に、車ごとに変わる値を入れ直す
+function applyEngineProfile(id){
+  const P = ENGINES[id] || ENGINES.f328, E = eng;
+  const w = makeEngineWave(P); E.main.setPeriodicWave(w); E.twin.setPeriodicWave(w);
+  for(let i=0;i<512;i++){ const x=i/256-1; E.curve[i]=Math.tanh(x*P.drive*2.2)*0.8 + Math.sin(x*Math.PI)*0.2; }
+  E.shaper.curve = E.curve;
+  engState.prof = id; engState.gear = -1; engState.boost = 0;
+}
+
 function updateEngineSound(speed, maxSpeed){
-  if(!sndReady||!eng1Osc) return;
-  const now   = sndCtx.currentTime;
-  const ratio = Math.max(0, Math.min(1, speed/maxSpeed));
-
-  // ギア計算(4速): 各ギアでrpmが落ちてまた上がる
-  const gear    = Math.min(3, Math.floor(ratio*4));
-  const gearPos = ratio*4 - gear;           // 0〜1 within current gear
-  // 基本rpm周波数: ギアが上がるごとに低くなり再上昇
-  // 1速:40-65Hz, 2速:50-80Hz, 3速:60-95Hz, 4速:70-110Hz
-  const gearBase = [40,50,60,70];
-  const gearTop  = [65,80,95,110];
-  const rpm = gearBase[gear] + gearPos*(gearTop[gear]-gearBase[gear]);
-
-  // ギアチェンジ瞬間: 一瞬dip
-  if(gear!==lastGear && lastGear>=0){
-    eng1Osc.frequency.setValueAtTime(rpm*0.82, now);
-    eng1Osc.frequency.linearRampToValueAtTime(rpm, now+0.12);
-    lastGear=gear;
-  } else {
-    eng1Osc.frequency.setTargetAtTime(rpm,      now, 0.06);
-    lastGear=gear;
-  }
-  eng2Osc.frequency.setTargetAtTime(rpm*2.0,   now, 0.06);
-  eng3Osc.frequency.setTargetAtTime(rpm*3.1,   now, 0.06);
-
-  // 音量: PLAYモードのみ。DEMOと待機中は無音。
+  if(!sndReady||!eng) return;
+  const now = sndCtx.currentTime, E = eng;
+  const id = engProfileId(); if(engState.prof !== id) applyEngineProfile(id);
+  const P = ENGINES[id];
   const isActive = (mode===MODE.PLAY);
-  const vol = isActive ? Math.max(0.04, ratio*0.22+(1-ratio)*0.04) : 0.01;
-  engMaster.gain.setTargetAtTime(vol, now, 0.10);
+
+  // ── アクセル（滑らかに）──
+  const thr = (isActive && typeof keys!=='undefined' && keys.U) ? 1 : 0;
+  engState.load += (thr - engState.load)*0.18;
+  const load = engState.load;
+
+  // ── ギアと回転数 ──
+  const N = P.gears, v = Math.max(0, Math.min(maxSpeed, speed));
+  const bound = i => maxSpeed*Math.pow(i/N, 0.8);
+  let gear = 0; while(gear < N-1 && v >= bound(gear+1)) gear++;
+  const t = (v - bound(gear))/Math.max(1e-6, bound(gear+1) - bound(gear));
+  const lo = gear === 0 ? P.idle/P.red : 0.60, hi = gear === N-1 ? 0.92 : 0.97;
+  const frac = lo + (hi - lo)*Math.max(0, Math.min(1, t));          // 回転数 / レッド
+  const rpm = P.red*frac;
+  const f0 = rpm/60*P.cyl/2;                                         // 点火の周波数
+
+  // シフト: 回転が落ちるのでアクセルを一瞬抜く（音量を落とす）。ターボ車はブローオフ
+  if(engState.gear >= 0 && gear > engState.gear){ engState.shiftT = 0.16; if(P.turbo && engState.boost > 0.45) blowOff(now); }
+  engState.gear = gear;
+  if(engState.shiftT > 0) engState.shiftT = Math.max(0, engState.shiftT - 0.033);
+
+  E.main.frequency.setTargetAtTime(f0, now, 0.035);
+  E.twin.frequency.setTargetAtTime(f0*1.006, now, 0.035);
+  E.lump.frequency.setTargetAtTime(f0/2, now, 0.035);
+
+  // ── 音色: 回転とアクセルで明るくなる ──
+  const bright = Math.min(1, frac*0.7 + load*0.45);
+  E.lp.frequency.setTargetAtTime(P.cut[0] + (P.cut[1]-P.cut[0])*bright, now, 0.06);
+  E.twinLp.frequency.setTargetAtTime((P.cut[0] + (P.cut[1]-P.cut[0])*bright)*0.7, now, 0.06);
+  E.mainG.gain.setTargetAtTime(0.50 + 0.25*load, now, 0.06);
+  E.twinG.gain.setTargetAtTime(0.18 + 0.10*frac, now, 0.06);
+  E.lumpG.gain.setTargetAtTime(P.lump*(0.4 + 0.6*(1-frac))*(0.6 + 0.4*load), now, 0.06);   // うねりは低回転で目立つ
+  E.inBp.frequency.setTargetAtTime(350 + 2200*frac, now, 0.06);
+  E.inG.gain.setTargetAtTime(P.intake*0.05*(0.25 + 0.75*load)*(0.4 + frac), now, 0.06);
+  E.whBp.frequency.setTargetAtTime(1800 + 4200*frac, now, 0.06);
+  E.whG.gain.setTargetAtTime(P.whine*0.018*Math.pow(frac, 2.2)*(0.4 + 0.6*load), now, 0.06);
+
+  // ── ターボ: ブーストは アクセル×回転 に遅れて追従。笛の高さ=ブースト ──
+  const tgtBoost = P.turbo ? load*Math.pow(frac, 1.4) : 0;
+  engState.boost += (tgtBoost - engState.boost)*(tgtBoost > engState.boost ? 0.05 : 0.12);
+  if(P.turbo && engState.lastThrottle >= 0.7 && load < 0.7 && engState.boost > 0.35) blowOff(now);   // アクセルを戻した瞬間（ブーストが残っている時）
+  engState.lastThrottle = load;
+  E.tur.frequency.setTargetAtTime(1800 + 3600*engState.boost, now, 0.05);
+  E.turG.gain.setTargetAtTime(P.turbo ? 0.045*engState.boost : 0, now, 0.05);
+
+  // ── 音量: PLAYのみ。DEMOと待機中はほぼ無音 ──
+  const shiftDip = engState.shiftT > 0 ? 0.35 : 1;
+  const vol = isActive ? (0.07 + 0.15*frac*(0.55 + 0.45*load))*P.vol*shiftDip : 0.01;
+  E.master.gain.setTargetAtTime(vol, now, 0.06);
 
   // ロードノイズ: PLAYモード・速度に比例
-  const noiseVol = isActive ? ratio*0.25 : 0;
-  roadNoiseGain.gain.setTargetAtTime(noiseVol, now, 0.08);
+  roadNoiseGain.gain.setTargetAtTime(isActive ? (v/maxSpeed)*0.25 : 0, now, 0.08);
+}
 
-  // 高調波バランス: 高回転ほど倍音が増える
-  eng2Gain.gain.setTargetAtTime(0.25+ratio*0.20, now, 0.08);
-  eng3Gain.gain.setTargetAtTime(0.08+ratio*0.18, now, 0.08);
+// ターボのブローオフ（アクセルを戻した時の「プシュッ」）
+function blowOff(now){
+  if(!eng) return; const g = eng.boG.gain;
+  g.cancelScheduledValues(now); g.setValueAtTime(0.0001, now);
+  g.linearRampToValueAtTime(0.20, now + 0.012); g.exponentialRampToValueAtTime(0.001, now + 0.45);
+  engState.boost *= 0.4;
 }
 
 function playStarSound(){
