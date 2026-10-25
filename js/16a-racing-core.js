@@ -128,12 +128,9 @@ window.addEventListener('keydown',e=>{
   if(e.key==='ArrowRight'){keys.R=true;e.preventDefault();}
   if(e.key==='ArrowUp')   {keys.U=true;e.preventDefault();}
   if(e.key==='ArrowDown') {keys.D=true;e.preventDefault();}
-  // タイトル画面だけ: ←→ で車を選ぶ。キーの自動リピート(e.repeat)は無視する
+  // タイトル画面だけ: ガレージのキー操作（G=開閉 ←→=車 T=強化 ↑↓/Enter=強化ページ）。キーの自動リピート(e.repeat)は無視する
   //（走行中に押しっぱなしだった ←→ が、ゲームオーバー後にリピートして車種が次々に変わるバグの原因だった）
-  if(mode===MODE.DEMO&&!e.repeat&&typeof Garage!=='undefined'){
-    if(e.key==='ArrowLeft'){Garage.select(-1);}
-    if(e.key==='ArrowRight'){Garage.select(1);}
-  }
+  if(mode===MODE.DEMO&&!e.repeat&&typeof Garage!=='undefined'&&Garage.onKey(e)){e.preventDefault();return;}
   if((e.key===' '||e.key==='Enter')&&mode!==MODE.PLAY)startGame();
 });
 window.addEventListener('keyup',e=>{
@@ -474,7 +471,7 @@ function startGame(){
   player.slip=0;player.slipV=0;player.slideV=0;
   traffic=[];bonusStars=[];bonusHearts=[];bonusCoins=[];spawnTick=0;
   game.coins=0;game.nextCoin=COIN_FIRST[0]+Math.random()*(COIN_FIRST[1]-COIN_FIRST[0]);
-  if(typeof Garage!=='undefined')Garage.applyToPlayer();
+  if(typeof Garage!=='undefined'){Garage.close();Garage.applyToPlayer();}
   addLog('GAME START!  ↑ACCEL  ↓BRAKE  ←→STEER');
   const gb=document.getElementById('vfdGameBtn');
   if(gb){gb.textContent='DEMO';gb.classList.remove('btn-red');gb.classList.add('btn');}

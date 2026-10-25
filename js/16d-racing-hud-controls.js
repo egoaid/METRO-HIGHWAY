@@ -76,13 +76,9 @@ function drawDemoOverlay(g){
     g.fillText('ROTATE TO LANDSCAPE FOR BEST VIEW',W*0.5,H*0.25+Math.round(W*0.06));
   }
   g.shadowBlur=0;g.textAlign='left';
-  if(typeof Garage!=='undefined'){
-    Garage.drawPanel(g);                                        // 車の選択・購入パネル（タイトル画面だけ。開始後は出さない）
-    g.font=`${Math.round(H*0.024)}px 'Share Tech Mono',monospace`;g.textAlign='center';g.fillStyle='rgba(93,240,200,0.40)';
-    g.fillText(IS_TOUCH_DEVICE?'TAP ◀ ▶ TO CHOOSE A CAR':'← → CHOOSE A CAR',W*0.5,H*0.285+H*0.30+H*0.035);
-    g.textAlign='left';
-  }
+  if(typeof Garage!=='undefined')Garage.drawPanel(g);          // ガレージ（閉じている時は「G: GARAGE」の案内だけ。開いた時だけパネルを出す）
 }
+
 function drawGameOver(){
   g.fillStyle='rgba(0,4,8,0.72)';g.fillRect(0,H*0.25,W,H*0.35);
   g.textAlign='center';
