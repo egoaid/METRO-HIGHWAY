@@ -461,6 +461,8 @@ function ensureAutoDrone(){
   const b=document.getElementById('autoDroneBtn');
   if(b&&!b.classList.contains('playing')){_adKickAt=now;b.click();}
 }
+// ゲームオーバー→デモへ戻る予約（endGame）を、再スタートや次のゲームオーバーで無効にするための番号
+let overToken=0;
 function startGame(){
   if(typeof Garage!=='undefined'&&!Garage.ready())return;   // 未購入の車を見ている時は、開始ではなく購入（コイン不足ならメッセージ）
   initSound();
@@ -469,6 +471,7 @@ function startGame(){
   game.hp=game.maxHp;game.dist=0;game.hitTimer=0;game.overTimer=0;game.nextStar=STAR_FIRST_DIST;game.nextHeart=HEART_FIRST[0]+Math.random()*(HEART_FIRST[1]-HEART_FIRST[0]);
   cam.pos=0;player.x=PLAYER_START_X;player.xv=0;player.speed=0;player.bank=0;player.inv=0;
   player.slip=0;player.slipV=0;player.slideV=0;
+  overToken++;                                              // 直前のゲームオーバーの「3.5秒後にデモへ戻る」予約を無効にする（再スタート直後に新しいゲームがデモへ戻されるバグの修正）
   traffic=[];bonusStars=[];bonusHearts=[];bonusCoins=[];spawnTick=0;
   game.coins=0;game.nextCoin=COIN_FIRST[0]+Math.random()*(COIN_FIRST[1]-COIN_FIRST[0]);
   if(typeof Garage!=='undefined'){Garage.close();Garage.applyToPlayer();}
@@ -497,7 +500,7 @@ function takeDamage(pushDir,kick){
     return;
   }
   playCrashSound();
-  game.hp--;game.hitTimer=90;
+  game.hp=Math.max(0,game.hp-1);game.hitTimer=90;           // 半ハート(0.5)で被弾しても 0 未満にならない
   // 衝突スリップ: 横転ではなく、ヨー(向き)の振れと横への流れだけ
   applyPlayerKick(dir,kick);
   addLog(`DAMAGE! HP:${hpText()}`);
@@ -510,7 +513,9 @@ function endGame(){
   addLog(`GAME OVER! ${(game.dist/1000).toFixed(2)}km`);
   if(game.dist>=game.best&&game.dist>0)addLog('★ NEW RECORD!');
   if(typeof Garage!=='undefined')Garage.onGameOver(game.coins);
+  const tk=++overToken;
   setTimeout(()=>{
+    if(tk!==overToken||mode!==MODE.OVER)return;               // その後に再スタートした/別のゲームオーバーになった場合は何もしない
     mode=MODE.DEMO;
     player.speed=0;player.x=PLAYER_START_X;player.xv=0;player.bank=0;player.inv=0;
     player.slip=0;player.slipV=0;player.slideV=0;

@@ -39,8 +39,13 @@ and nothing you make is sent anywhere.
   The skyline, trees and mountains are holograms that glitch now and then,
   and the mountains slowly change colour. Traffic keeps to the right (some
   cars break the rule), you can cross into the oncoming lane, cars crash into
-  each other realistically (heavy trucks barely budge), and past 5 km bonus
-  stars drop on the road — grab one for a few seconds of invincibility.
+  each other realistically (heavy trucks barely budge). You have three
+  hearts; hearts on the road win back half a heart, and from 3 km a bonus
+  star drops now and then — grab one for a few seconds of invincibility.
+  Rows of coins (some in the oncoming lanes) pay for the garage: buy cars
+  with different top speed, lane-change speed, braking, grip and weight,
+  upgrade them and repaint them. Each car has its own engine sound, and
+  your garage is saved in the browser and kept across updates.
   Playing starts Auto Drone on every device.
   On a phone it plays fullscreen with a single virtual joystick, and Auto
   Drone starts along with the game.
