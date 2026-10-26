@@ -9,7 +9,7 @@
 //   削除して再読み込みし、最新版にする。
 // ════════════════════════════════════════════════
 (function(){
-  const APP_VERSION = '1.8.1';
+  const APP_VERSION = '1.8.2';
   window.APP_VERSION = APP_VERSION;
 
   document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = 'v' + APP_VERSION; });
