@@ -467,6 +467,7 @@ function startGame(){
   if(typeof Garage!=='undefined'&&!Garage.ready())return;   // 未購入の車を見ている時は、開始ではなく購入（コイン不足ならメッセージ）
   initSound();
   ensureAutoDrone();
+  setBgmDuck(true);                                         // ゲーム中は BGM を下げる（16e）
   mode=MODE.PLAY;
   game.hp=game.maxHp;game.dist=0;game.hitTimer=0;game.overTimer=0;game.nextStar=STAR_FIRST_DIST;game.nextHeart=HEART_FIRST[0]+Math.random()*(HEART_FIRST[1]-HEART_FIRST[0]);
   cam.pos=0;player.x=PLAYER_START_X;player.xv=0;player.speed=0;player.bank=0;player.inv=0;
@@ -508,6 +509,7 @@ function takeDamage(pushDir,kick){
 }
 
 function endGame(){
+  setBgmDuck(false);                                        // ゲームオーバー: BGM を元の音量へ戻す（16e）
   mode=MODE.OVER;
   if(game.dist>game.best)game.best=game.dist;
   addLog(`GAME OVER! ${(game.dist/1000).toFixed(2)}km`);

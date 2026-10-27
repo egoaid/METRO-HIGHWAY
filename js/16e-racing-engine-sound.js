@@ -21,6 +21,18 @@
 // 車ごとの設定は ENGINES（キーは 16l の車の id）。
 // 注意: WaveShaperNode.curve は一度しか代入できない（仕様。2回目は例外）。曲線は初期化で1回だけ代入する。
 // ════════════════════════════════════
+// ── ゲーム中は BGM（シンセ側の AudioContext = ctx）を下げる ──
+// 理由: エンジン音は別の AudioContext(sndCtx) で鳴り、BGM と同じ出力に混ざる。BGM が大きいとエンジン音が聞こえない。
+// BGM の出口に置いた bgmDuckGain（01-audio-engine.js）の倍率だけを動かす。フェーダー・Auto Drone のフェード・録音には触れない。
+const BGM_DUCK_PLAY = 0.35;        // ゲーム中の BGM の倍率（0.35 = 約 −9 dB）。小さいほどエンジン音が目立つ
+function setBgmDuck(on){
+  if(typeof bgmDuckGain==='undefined' || typeof ctx==='undefined') return;
+  try{
+    const g = bgmDuckGain.gain, now = ctx.currentTime;
+    g.cancelScheduledValues(now); g.setValueAtTime(g.value, now);
+    g.setTargetAtTime(on ? BGM_DUCK_PLAY : 1, now, on ? 0.25 : 0.45);      // 下げる時は速め、戻す時はゆっくり
+  }catch(_){}
+}
 let sndCtx = null;
 let sndReady = false;
 let eng = null;                    // エンジン音のノード一式（initSound で作る）
