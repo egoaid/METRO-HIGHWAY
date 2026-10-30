@@ -73,7 +73,7 @@ window.VfdTouch = (function(){
   });
   layer.addEventListener('pointermove', e=>{ if(e.pointerId === activeId){ e.preventDefault(); place(e); } });
   layer.addEventListener('pointerup', e=>{
-    if(e.pointerId === tapId){ tapId = null; if(mode !== MODE.PLAY){ if(window.Garage && Garage.handleTap(e.clientX, e.clientY)) return; startMobilePlay(); } return; }
+    if(e.pointerId === tapId){ tapId = null; if(mode !== MODE.PLAY){ if(window.AudioMix && AudioMix.handleTap(e.clientX, e.clientY)) return; if(window.Garage && Garage.handleTap(e.clientX, e.clientY)) return; startMobilePlay(); } return; }
     if(e.pointerId === activeId) release();
   });
   ['pointercancel','lostpointercapture'].forEach(ev =>

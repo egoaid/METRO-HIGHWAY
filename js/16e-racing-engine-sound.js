@@ -21,18 +21,12 @@
 // 車ごとの設定は ENGINES（キーは 16l の車の id）。
 // 注意: WaveShaperNode.curve は一度しか代入できない（仕様。2回目は例外）。曲線は初期化で1回だけ代入する。
 // ════════════════════════════════════
-// ── ゲーム中は BGM（シンセ側の AudioContext = ctx）を下げる ──
-// 理由: エンジン音は別の AudioContext(sndCtx) で鳴り、BGM と同じ出力に混ざる。BGM が大きいとエンジン音が聞こえない。
-// BGM の出口に置いた bgmDuckGain（01-audio-engine.js）の倍率だけを動かす。フェーダー・Auto Drone のフェード・録音には触れない。
-const BGM_DUCK_PLAY = 0.35;        // ゲーム中の BGM の倍率（0.35 = 約 −9 dB）。小さいほどエンジン音が目立つ
-function setBgmDuck(on){
-  if(typeof bgmDuckGain==='undefined' || typeof ctx==='undefined') return;
-  try{
-    const g = bgmDuckGain.gain, now = ctx.currentTime;
-    g.cancelScheduledValues(now); g.setValueAtTime(g.value, now);
-    g.setTargetAtTime(on ? BGM_DUCK_PLAY : 1, now, on ? 0.25 : 0.45);      // 下げる時は速め、戻す時はゆっくり
-  }catch(_){}
-}
+// ── ゲーム音（エンジン・衝突・星・ハート・コイン・エネルギー…）は全て gameBus を通って出力へ出る（v1.9.0）──
+// BGM（シンセ側の AudioContext）とは別の AudioContext。BGM より大きく聞こえるよう、基準を GAME_BOOST 倍（約 +9 dB）にしてある。
+// 端末の音量を下げれば全体が下がり、ゲーム音と BGM の差は残る。ユーザーは AudioMix（16n）で GAME を 0〜150% に調整できる。
+// gameBus の先に ソフトクリップ（音割れ防止）。どんなに大きくても出力は 0dBFS 未満。
+const GAME_BOOST = 2.8;            // ゲーム音の基準倍率（2.8 ≒ +8.9 dB）
+let gameBus = null;
 let sndCtx = null;
 let sndReady = false;
 let eng = null;                    // エンジン音のノード一式（initSound で作る）
@@ -66,7 +60,18 @@ function initSound(){
     sndCtx = new (window.AudioContext||window.webkitAudioContext)();
     const comp = sndCtx.createDynamicsCompressor();
     comp.threshold.value=-14; comp.ratio.value=4;
-    comp.connect(sndCtx.destination);
+    // ゲーム音バス → ソフトクリップ(tanh) → 出力。
+    // 最終段に DynamicsCompressor を置くと、自動のメイクアップゲインで逆に音量が上がり 0dBFS を超える（実測: 衝突音が +3.8dBFS）ので、
+    // 波形整形で必ず |出力| < 1 にする。出力 = tanh(入力)（小さい音はほぼ線形、大きなピークだけ丸まる）。
+    // 入力が ±4 までを扱えるよう 1/4 にして整形し、曲線は tanh(4x)。曲線の代入は1回だけ（2回目は例外）。
+    const clipPre = sndCtx.createGain(); clipPre.gain.value = 0.25;
+    const clip = sndCtx.createWaveShaper(), cc = new Float32Array(2048);
+    for(let i=0;i<2048;i++){ const x=i/1023.5-1; cc[i]=Math.tanh(4*x); }
+    clip.curve = cc; clip.oversample = '2x';
+    clipPre.connect(clip); clip.connect(sndCtx.destination);
+    gameBus = sndCtx.createGain(); gameBus.gain.value = GAME_BOOST*((typeof AudioMix!=='undefined')?AudioMix.game():1);
+    gameBus.connect(clipPre);
+    comp.connect(gameBus);
 
     // 音全体の仕上げ: 低音を持ち上げ、高域を削る（小さなスピーカーでも低音が「聞こえる」帯域 80〜250Hz を厚くする）
     const master = sndCtx.createGain(); master.gain.value=0;
@@ -222,7 +227,7 @@ function playStarSound(){
     gn.gain.setValueAtTime(0.0001,t0);
     gn.gain.exponentialRampToValueAtTime(0.16,t0+0.015);
     gn.gain.exponentialRampToValueAtTime(0.001,t0+0.28);
-    osc.connect(gn); gn.connect(sndCtx.destination);
+    osc.connect(gn); gn.connect(gameBus);
     osc.start(t0); osc.stop(t0+0.30);
   });
 }
@@ -237,7 +242,7 @@ function playHeartSound(){
     gn.gain.setValueAtTime(0.0001,t0);
     gn.gain.exponentialRampToValueAtTime(0.16,t0+0.02);
     gn.gain.exponentialRampToValueAtTime(0.001,t0+0.30);
-    osc.connect(gn); gn.connect(sndCtx.destination);
+    osc.connect(gn); gn.connect(gameBus);
     osc.start(t0); osc.stop(t0+0.32);
   });
 }
@@ -252,7 +257,7 @@ function playCoinSound(combo){
     gn.gain.setValueAtTime(0.0001,t0);
     gn.gain.exponentialRampToValueAtTime(0.07,t0+0.008);
     gn.gain.exponentialRampToValueAtTime(0.001,t0+0.16);
-    osc.connect(gn); gn.connect(sndCtx.destination);
+    osc.connect(gn); gn.connect(gameBus);
     osc.start(t0); osc.stop(t0+0.18);
   });
 }
@@ -266,8 +271,24 @@ function playPurchaseSound(){
     gn.gain.setValueAtTime(0.0001,t0);
     gn.gain.exponentialRampToValueAtTime(0.14,t0+0.02);
     gn.gain.exponentialRampToValueAtTime(0.001,t0+0.35);
-    osc.connect(gn); gn.connect(sndCtx.destination);
+    osc.connect(gn); gn.connect(gameBus);
     osc.start(t0); osc.stop(t0+0.38);
+  });
+}
+function playEnergySound(){
+  if(!sndReady) return;
+  // エネルギータンク: 下から駆け上がるうなりとキラッとした高音（ターボが効いた感じ）
+  const now = sndCtx.currentTime;
+  const sw = sndCtx.createOscillator(), sg = sndCtx.createGain();
+  sw.type='sawtooth'; sw.frequency.setValueAtTime(180, now); sw.frequency.exponentialRampToValueAtTime(900, now+0.45);
+  sg.gain.setValueAtTime(0.0001, now); sg.gain.exponentialRampToValueAtTime(0.10, now+0.06); sg.gain.exponentialRampToValueAtTime(0.001, now+0.55);
+  const lp = sndCtx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.setValueAtTime(500, now); lp.frequency.exponentialRampToValueAtTime(3500, now+0.45);
+  sw.connect(lp); lp.connect(sg); sg.connect(gameBus); sw.start(now); sw.stop(now+0.6);
+  [1046.5, 1568].forEach((f,i)=>{
+    const o = sndCtx.createOscillator(), g2 = sndCtx.createGain(); o.type='triangle'; o.frequency.value=f;
+    const t0 = now + 0.28 + i*0.07;
+    g2.gain.setValueAtTime(0.0001,t0); g2.gain.exponentialRampToValueAtTime(0.10,t0+0.02); g2.gain.exponentialRampToValueAtTime(0.001,t0+0.32);
+    o.connect(g2); g2.connect(gameBus); o.start(t0); o.stop(t0+0.34);
   });
 }
 function playCrashSound(){
@@ -277,7 +298,7 @@ function playCrashSound(){
   const g2 = sndCtx.createGain();
   g2.gain.setValueAtTime(0.6, now);
   g2.gain.exponentialRampToValueAtTime(0.001, now+0.35);
-  g2.connect(sndCtx.destination);
+  g2.connect(gameBus);
 
   // ノイズ(金属衝突感)
   const buf = sndCtx.createBuffer(1, Math.ceil(sndCtx.sampleRate*0.35), sndCtx.sampleRate);
@@ -297,7 +318,7 @@ function playCrashSound(){
   osc2.frequency.exponentialRampToValueAtTime(40,now+0.25);
   g3.gain.setValueAtTime(0.5,now);
   g3.gain.exponentialRampToValueAtTime(0.001,now+0.30);
-  osc2.connect(g3); g3.connect(sndCtx.destination);
+  osc2.connect(g3); g3.connect(gameBus);
   osc2.start(now); osc2.stop(now+0.30);
 }
 
@@ -312,7 +333,7 @@ function playPassSound(){
   osc.frequency.linearRampToValueAtTime(120,now+0.18);
   gn.gain.setValueAtTime(0.12,now);
   gn.gain.exponentialRampToValueAtTime(0.001,now+0.20);
-  osc.connect(gn); gn.connect(sndCtx.destination);
+  osc.connect(gn); gn.connect(gameBus);
   osc.start(now); osc.stop(now+0.22);
 }
 

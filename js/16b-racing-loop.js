@@ -6,7 +6,7 @@ let demoLane=0.66, demoLaneT=0, demoTgtS=0.66, demoVx=0;
 function frame(t){
   if(!enabled)return;
   rafId=requestAnimationFrame(frame);
-  if(typeof Roadside==='undefined'||typeof Hologram==='undefined'||typeof SpeedFx==='undefined'||typeof Traffic==='undefined'||typeof StarBonus==='undefined'||typeof HeartBonus==='undefined'||typeof CoinBonus==='undefined'||typeof Garage==='undefined')return; // 16f/16h/16i/16j/16k/16l/16m が読み込み中の間は描かない
+  if(typeof Roadside==='undefined'||typeof Hologram==='undefined'||typeof SpeedFx==='undefined'||typeof Traffic==='undefined'||typeof StarBonus==='undefined'||typeof HeartBonus==='undefined'||typeof CoinBonus==='undefined'||typeof Garage==='undefined'||typeof AudioMix==='undefined'||typeof EnergyTank==='undefined')return; // 16f/16h/16i/16j/16k/16l/16m が読み込み中の間は描かない
   if(t-lastT<33)return;
   const dt=Math.min((t-lastT)/1000,0.08);
   lastT=t;
@@ -21,7 +21,9 @@ function frame(t){
     // ── 縦速度 ──
     // 走行性能は、ガレージで選んだ車の値（16l の CARS）。最高速・加速・ブレーキ・ハンドル・グリップが車ごとに違う。
     const S=Garage.stats();
-    if(keys.U) player.speed=Math.min(S.vmax,player.speed+S.accel*dt);
+    // エネルギータンク中は 最高速 +ENERGY_VMAX_BONUS km/h・加速 ×ENERGY_ACCEL_MULT。切れた後に最高速を超えている分は ENERGY_DECAY km/h/s で戻す（急に落とさない）
+    const boosted = player.energy>0, vmaxEff = S.vmax + (boosted?ENERGY_VMAX_BONUS:0);
+    if(keys.U){ if(player.speed<vmaxEff) player.speed=Math.min(vmaxEff,player.speed+S.accel*(boosted?ENERGY_ACCEL_MULT:1)*dt); else player.speed=Math.max(vmaxEff,player.speed-ENERGY_DECAY*dt); }
     else if(keys.D) player.speed=Math.max(0,player.speed-S.brake*dt);
     else player.speed=Math.max(0,player.speed-SPD_DRAG*dt);
 
@@ -150,7 +152,10 @@ function frame(t){
   // ══ コイン ══（16m-racing-coin.js）
   if(mode===MODE.PLAY) CoinBonus.update(dt);
 
-  updateEngineSound(player.speed, mode===MODE.PLAY?Garage.stats().vmax:SPD_MAX);
+  // ══ エネルギータンク ══（16o-racing-energy.js）
+  if(mode===MODE.PLAY) EnergyTank.update(dt);
+
+  updateEngineSound(player.speed, mode===MODE.PLAY?Garage.stats().vmax+(player.energy>0?ENERGY_VMAX_BONUS:0):SPD_MAX);   // 効果中は最高速が +50 なのでギアの割り当ても合わせる
   drawScene(t,bpm);
   if(mode===MODE.OVER)drawGameOver();
 }
@@ -173,6 +178,7 @@ function drawScene(t,bpm){
   }
   drawHUD(g,bpm);
   if(mode===MODE.DEMO)drawDemoOverlay(g);
+  AudioMix.draw(g);                                      // 音量の表示（タイトルでは常に、他は調整した直後の2秒）
   if(mode===MODE.PLAY||mode===MODE.OVER)drawGameHUD(g);
   drawLogs(g);
 }
@@ -464,6 +470,11 @@ function drawWorld(t,bpm){
       if(relZ > DRAW*SEGZ || relZ < 200) return;
       items.push({k:'star', relZ, star:st});
     });
+    EnergyTank.items().forEach(tk=>{
+      const relZ = tk.z - cam.pos;
+      if(relZ > DRAW*SEGZ || relZ < 200) return;
+      items.push({k:'energy', relZ, tank:tk});
+    });
     CoinBonus.items().forEach(cn=>{
       const relZ = cn.z - cam.pos;
       if(relZ > DRAW*SEGZ || relZ < 200) return;
@@ -486,6 +497,7 @@ function drawWorld(t,bpm){
         if(it.k==='star'){ StarBonus.draw(g, it.star, relZ, cxAcc, t); return; }
         if(it.k==='heart'){ HeartBonus.draw(g, it.heart, relZ, cxAcc, t); return; }
         if(it.k==='coin'){ CoinBonus.draw(g, it.coin, relZ, cxAcc, t); return; }
+        if(it.k==='energy'){ EnergyTank.draw(g, it.tank, relZ, cxAcc, t); return; }
         const car = it.car;
         // 向き = 基本の向き + 衝突の揺れ + 車線変更の舵（Traffic.visYaw）
         drawTrafficCar(g, car.x * ROADW, relZ, cxAcc,

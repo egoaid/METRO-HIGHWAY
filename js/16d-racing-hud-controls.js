@@ -61,6 +61,21 @@ function drawGameHUD(g){
       g.fillText(`${player.inv.toFixed(1)}s`,cx,y+bh+H*0.034);
     }
   }
+  // エネルギータンクの残り時間: 緑の棒（星の棒の下）。効果が切れる2秒前から点滅
+  if(player.energy>0){
+    const cx=W*0.5, y=H*0.158, bw=W*0.20, bh=Math.max(4,H*0.012);
+    const blink=player.energy<2&&(Math.floor(performance.now()/110)%2===0);
+    if(!blink){
+      g.shadowColor='#3dffa6';g.shadowBlur=8;
+      g.fillStyle='#3dffa6';g.textAlign='center';
+      g.font=`${Math.round(H*0.03)}px 'Share Tech Mono',monospace`;
+      g.fillText('⚡',cx-bw*0.5-H*0.03,y+bh*0.5+H*0.010);
+      g.fillStyle='rgba(61,255,166,0.25)';g.fillRect(cx-bw*0.5,y,bw,bh);
+      g.fillStyle='#3dffa6';g.fillRect(cx-bw*0.5,y,bw*Math.min(1,player.energy/ENERGY_TIME),bh);
+      g.font=`${Math.round(H*0.026)}px 'Share Tech Mono',monospace`;
+      g.fillText(`+${ENERGY_VMAX_BONUS}km/h  ${player.energy.toFixed(1)}s`,cx,y+bh+H*0.030);
+    }
+  }
   g.shadowBlur=0;g.textAlign='left';
 }
 function drawDemoOverlay(g){

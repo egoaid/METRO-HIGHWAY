@@ -70,7 +70,7 @@ const CAM_SCALE = 14;
 const MODE={DEMO:'demo',PLAY:'play',OVER:'over'};
 let mode=MODE.DEMO;
 // hp は 0.5 刻み（ダメージ=1、ハート取得=+0.5）。maxHp を超えない。
-const game={hp:3,maxHp:3,dist:0,best:0,hitTimer:0,overTimer:0,nextStar:0,nextHeart:0,healT:0,coins:0,nextCoin:0};
+const game={hp:3,maxHp:3,dist:0,best:0,hitTimer:0,overTimer:0,nextStar:0,nextHeart:0,healT:0,coins:0,nextCoin:0,nextEnergy:0};
 
 // ── 交通ルールと星のボーナス ──
 // 右側通行: 自車と同方向の車線は道路の右半分、対向車線は左半分（車線の中央。道路は4車線: ±0.22, ±0.66）。
@@ -100,8 +100,20 @@ const COIN_ONC_VALUE=2;          // 対向車線のコイン1枚の価値（危�
 const COIN_FIRST=[150,300];      // 最初のコイン列までの距離の範囲(m)
 const COIN_EVERY=[300,500];      // 次のコイン列までの距離の範囲(m)（平均 400m ≒ 1kmに6枚前後を取れる）
 let bonusCoins=[];
+// 道路に落ちている「エネルギータンク」（16o-racing-energy.js）。取ると ENERGY_TIME 秒の間、最高速が +ENERGY_VMAX_BONUS km/h（加速も ×ENERGY_ACCEL_MULT）。
+// 無敵ではない（ぶつかればハートは減る）。速くなる＝同じ秒数で遠くまで行ける代わりに、避ける余裕・カーブの外への流れ（速度の2乗）がきつくなる。
+// 約 ENERGY_EVERY(m) に1個（星・ハートと同じ約2km間隔だが、取るかどうかはプレイヤーの判断）。
+const ENERGY_TIME=INV_TIME;           // 効果の長さ（星と同じ）
+const ENERGY_VMAX_BONUS=50;           // 最高速に足す km/h
+const ENERGY_ACCEL_MULT=1.6;          // 効果中の加速の倍率（+50km/h に約1秒で届くように）
+const ENERGY_DECAY=45;                // 効果が切れた後、最高速を超えている分が減っていく速さ km/h/s（急に落とさない）
+const ENERGY_FIRST=[1200,1800];       // 最初のタンクまでの距離の範囲(m)
+const ENERGY_EVERY=[1400,2200];       // 次のタンクまでの距離の範囲(m)（平均 1.8km）
+const ENERGY_ONC_P=0.25;              // 対向車線に置かれる確率
+let bonusEnergy=[];
 const cam={pos:0};
 const player={x:0,xv:0,speed:0,bank:0,
+  energy:0,  // エネルギータンクの効果の残り時間(秒)。>0 の間は最高速 +ENERGY_VMAX_BONUS km/h・加速 ×ENERGY_ACCEL_MULT
   inv:0,     // 無敵の残り時間(秒)。星を取ると INV_TIME
   slip:0,    // 衝突スリップ: 車体の向き(ヨー角, rad)。+で鼻先が右。ロール(横転)はしない
   slipV:0,   // ヨー角速度(rad/s)
@@ -124,6 +136,8 @@ const keys={L:false,R:false,U:false,D:false,ax:0};
 let roadCenterOffsetPx = 0;
 
 window.addEventListener('keydown',e=>{
+  // 音量: - = で BGM、[ ] でゲーム音（どのモードでも・走行中でも。16n）
+  if(typeof AudioMix!=='undefined'&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&AudioMix.onKey(e)){e.preventDefault();return;}
   if(e.key==='ArrowLeft') {keys.L=true;e.preventDefault();}
   if(e.key==='ArrowRight'){keys.R=true;e.preventDefault();}
   if(e.key==='ArrowUp')   {keys.U=true;e.preventDefault();}
@@ -467,14 +481,13 @@ function startGame(){
   if(typeof Garage!=='undefined'&&!Garage.ready())return;   // 未購入の車を見ている時は、開始ではなく購入（コイン不足ならメッセージ）
   initSound();
   ensureAutoDrone();
-  setBgmDuck(true);                                         // ゲーム中は BGM を下げる（16e）
   mode=MODE.PLAY;
   game.hp=game.maxHp;game.dist=0;game.hitTimer=0;game.overTimer=0;game.nextStar=STAR_FIRST_DIST;game.nextHeart=HEART_FIRST[0]+Math.random()*(HEART_FIRST[1]-HEART_FIRST[0]);
-  cam.pos=0;player.x=PLAYER_START_X;player.xv=0;player.speed=0;player.bank=0;player.inv=0;
+  cam.pos=0;player.x=PLAYER_START_X;player.xv=0;player.speed=0;player.bank=0;player.inv=0;player.energy=0;
   player.slip=0;player.slipV=0;player.slideV=0;
   overToken++;                                              // 直前のゲームオーバーの「3.5秒後にデモへ戻る」予約を無効にする（再スタート直後に新しいゲームがデモへ戻されるバグの修正）
-  traffic=[];bonusStars=[];bonusHearts=[];bonusCoins=[];spawnTick=0;
-  game.coins=0;game.nextCoin=COIN_FIRST[0]+Math.random()*(COIN_FIRST[1]-COIN_FIRST[0]);
+  traffic=[];bonusStars=[];bonusHearts=[];bonusCoins=[];bonusEnergy=[];spawnTick=0;
+  game.coins=0;game.nextCoin=COIN_FIRST[0]+Math.random()*(COIN_FIRST[1]-COIN_FIRST[0]);game.nextEnergy=ENERGY_FIRST[0]+Math.random()*(ENERGY_FIRST[1]-ENERGY_FIRST[0]);
   if(typeof Garage!=='undefined'){Garage.close();Garage.applyToPlayer();}
   addLog('GAME START!  ↑ACCEL  ↓BRAKE  ←→STEER');
   const gb=document.getElementById('vfdGameBtn');
@@ -509,7 +522,6 @@ function takeDamage(pushDir,kick){
 }
 
 function endGame(){
-  setBgmDuck(false);                                        // ゲームオーバー: BGM を元の音量へ戻す（16e）
   mode=MODE.OVER;
   if(game.dist>game.best)game.best=game.dist;
   addLog(`GAME OVER! ${(game.dist/1000).toFixed(2)}km`);
@@ -519,9 +531,9 @@ function endGame(){
   setTimeout(()=>{
     if(tk!==overToken||mode!==MODE.OVER)return;               // その後に再スタートした/別のゲームオーバーになった場合は何もしない
     mode=MODE.DEMO;
-    player.speed=0;player.x=PLAYER_START_X;player.xv=0;player.bank=0;player.inv=0;
+    player.speed=0;player.x=PLAYER_START_X;player.xv=0;player.bank=0;player.inv=0;player.energy=0;
     player.slip=0;player.slipV=0;player.slideV=0;
-    traffic=[];bonusStars=[];bonusHearts=[];bonusCoins=[];
+    traffic=[];bonusStars=[];bonusHearts=[];bonusCoins=[];bonusEnergy=[];
     const gb=document.getElementById('vfdGameBtn');
     if(gb){gb.textContent='PLAY';gb.classList.add('btn-red');gb.classList.remove('btn');}
   },3500);

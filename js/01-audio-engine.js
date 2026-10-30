@@ -34,14 +34,14 @@ masterVolGain.gain.value = 0.8;
 const recAnalyser = ctx.createAnalyser();
 recAnalyser.fftSize = 2048;
 masterVolGain.connect(recAnalyser);
-// ── BGM ダック用ゲイン（v1.8.3）: ゲーム中だけ BGM を下げ、エンジン音・効果音（別の AudioContext）を聞こえやすくする。
-//    平常時は 1.0（完全に透明）。ユーザーのフェーダー(masterVolGain)や Auto Drone のフェードとは「掛け算」で独立して働く。
+// ── BGM レベル用ゲイン（v1.9.0）: ユーザーが「BGM」の音量を 0〜100% で選ぶ（16n の AudioMix。保存される）。
+//    既定は 1.0（完全に透明）。ユーザーのフェーダー(masterVolGain)や Auto Drone のフェードとは「掛け算」で独立して働く。
 //    録音の取り出し口(recAnalyser)はこの手前なので、録音の音量には影響しない（room volume のみ）。
-//    制御は 16e の setBgmDuck(true/false)。 ──
-const bgmDuckGain = ctx.createGain();
-bgmDuckGain.gain.value = 1;
-recAnalyser.connect(bgmDuckGain);
-bgmDuckGain.connect(ctx.destination);          // ONLY connection to destination
+//    ゲームの開始・終了では動かさない（v1.8.3 のダックは、ゲームオーバーで BGM が急に大きくなって驚くため廃止）。 ──
+const bgmLevelGain = ctx.createGain();
+bgmLevelGain.gain.value = 1;
+recAnalyser.connect(bgmLevelGain);
+bgmLevelGain.connect(ctx.destination);         // ONLY connection to destination
 
 // ── Master analyser (oscilloscope + recording tap — POST-limiter) ──
 const masterAnalyser = ctx.createAnalyser();
