@@ -42,7 +42,7 @@ and nothing you make is sent anywhere.
   each other realistically (heavy trucks barely budge). You have three
   hearts; hearts on the road win back half a heart, and from 3 km a bonus
   star drops now and then — grab one for a few seconds of invincibility.
-  Green energy tanks give a few seconds of +50 km/h (not invincibility). Rows of coins (some in the oncoming lanes) pay for the garage: buy cars
+  Green energy tanks give a few seconds of +70 km/h with a flash, glowing car, speed lines and a roaring engine (not invincibility). Rows of coins (some in the oncoming lanes) pay for the garage: buy cars
   with different top speed, lane-change speed, braking, grip and weight,
   upgrade them and repaint them. Each car has its own engine sound, and
   your garage is saved in the browser and kept across updates.

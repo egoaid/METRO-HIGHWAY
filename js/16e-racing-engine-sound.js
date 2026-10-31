@@ -144,6 +144,8 @@ function updateEngineSound(speed, maxSpeed){
   const id = engProfileId(); if(engState.prof !== id) applyEngineProfile(id);
   const P = ENGINES[id];
   const isActive = (mode===MODE.PLAY);
+  // エネルギータンクの強さ 0〜1（16o の EnergyTank.level()）。音色・音量・ターボ笛・歪みを、既存のノードの値を変えるだけで強める（接続は変えない）
+  const en = (isActive && typeof EnergyTank!=='undefined') ? EnergyTank.level() : 0;
 
   // ── アクセル（滑らかに）──
   const thr = (isActive && typeof keys!=='undefined' && keys.U) ? 1 : 0;
@@ -175,33 +177,36 @@ function updateEngineSound(speed, maxSpeed){
   E.puls.frequency.setTargetAtTime(f0, now, 0.035);
 
   // ── 音色: 回転とアクセルで明るくなる（ただし上限は低め）──
-  const bright = Math.min(1, frac*0.7 + load*0.45);
+  const bright = Math.min(1, frac*0.7 + load*0.45 + 0.30*en);
   const cutF = P.cut[0] + (P.cut[1]-P.cut[0])*bright;
   E.lp.frequency.setTargetAtTime(cutF, now, 0.06);
   E.twinLp.frequency.setTargetAtTime(cutF*0.6, now, 0.06);
   const mainBase = 0.55 + 0.25*load;
   E.mainG.gain.setTargetAtTime(mainBase, now, 0.06);
   E.lfoG.gain.setTargetAtTime(P.rough*mainBase*(0.5 + 0.5*load), now, 0.06);                  // 粗さ（音量のゆれ）
-  E.subG.gain.setTargetAtTime(P.sub*(0.55 + 0.45*load)*(1.1 - 0.4*frac), now, 0.06);           // サブは低回転でより厚く
+  E.subG.gain.setTargetAtTime(P.sub*(0.55 + 0.45*load)*(1.1 - 0.4*frac)*(1 + 0.6*en), now, 0.06);
+  E.pre.gain.setTargetAtTime(P.drive*(1 + 0.45*en), now, 0.10);                                // 歪みを増やして荒く太く           // サブは低回転でより厚く
   E.twinG.gain.setTargetAtTime(0.20 + 0.10*frac, now, 0.06);
   E.inBp.frequency.setTargetAtTime(150 + 900*frac, now, 0.06);
   const inBase = P.intake*0.13*(0.25 + 0.75*load)*(0.4 + frac);
   E.inG.gain.setTargetAtTime(inBase, now, 0.06);
   E.pulsG.gain.setTargetAtTime(inBase*0.9, now, 0.06);                                        // ノイズを点火ごとに脈打たせる（谷間が埋まり、機械的な単音に聞こえない）
   E.whBp.frequency.setTargetAtTime(1200 + 2200*frac, now, 0.06);
-  E.whG.gain.setTargetAtTime(P.whine*0.008*Math.pow(frac, 2.2)*(0.4 + 0.6*load), now, 0.06);
+  E.whG.gain.setTargetAtTime(P.whine*0.008*Math.pow(frac, 2.2)*(0.4 + 0.6*load)*(1 + 3*en), now, 0.06);
 
   // ── ターボ: ブーストは アクセル×回転 に遅れて追従。笛の高さ=ブースト（低めの周波数・控えめ）──
   const tgtBoost = P.turbo ? load*Math.pow(frac, 1.4) : 0;
   engState.boost += (tgtBoost - engState.boost)*(tgtBoost > engState.boost ? 0.05 : 0.12);
   if(P.turbo && engState.lastThrottle >= 0.7 && load < 0.7 && engState.boost > 0.35) blowOff(now);   // アクセルを戻した瞬間（ブーストが残っている時）
   engState.lastThrottle = load;
-  E.tur.frequency.setTargetAtTime(1100 + 1700*engState.boost, now, 0.05);
-  E.turG.gain.setTargetAtTime(P.turbo ? 0.028*engState.boost : 0, now, 0.05);
+  // ターボの笛: ターボ車は従来どおり。エネルギー中は全ての車で鳴り（強さ=en）、高さも上がる
+  const tb = Math.max(engState.boost, 0.9*en);
+  E.tur.frequency.setTargetAtTime(1100 + 1700*tb, now, 0.05);
+  E.turG.gain.setTargetAtTime(Math.max(P.turbo ? 0.028*engState.boost : 0, 0.034*en), now, 0.05);
 
   // ── 音量: PLAYのみ。DEMOと待機中はほぼ無音 ──
   const shiftDip = engState.shiftT > 0 ? 0.35 : 1;
-  const vol = isActive ? (0.10 + 0.22*frac*(0.55 + 0.45*load))*P.vol*shiftDip*ENGINE_GAIN : 0.003;
+  const vol = isActive ? (0.10 + 0.22*frac*(0.55 + 0.45*load))*P.vol*shiftDip*ENGINE_GAIN*(1 + 0.35*en) : 0.003;
   E.master.gain.setTargetAtTime(vol, now, 0.06);
 
   // ロードノイズ: PLAYモード・速度に比例
@@ -277,20 +282,34 @@ function playPurchaseSound(){
 }
 function playEnergySound(){
   if(!sndReady) return;
-  // エネルギータンク: 下から駆け上がるうなりとキラッとした高音（ターボが効いた感じ）
+  // エネルギータンク（v1.9.1・派手）: ①ドンと来る低音 ②下から駆け上がるターボのうなり（長め） ③風切りの「ゴォッ」（ノイズが明るくなる）
+  // ④キラッとした上昇アルペジオ。全て gameBus へ（新しいノードは単発で、鳴り終わると止まる）
   const now = sndCtx.currentTime;
-  const sw = sndCtx.createOscillator(), sg = sndCtx.createGain();
-  sw.type='sawtooth'; sw.frequency.setValueAtTime(180, now); sw.frequency.exponentialRampToValueAtTime(900, now+0.45);
-  sg.gain.setValueAtTime(0.0001, now); sg.gain.exponentialRampToValueAtTime(0.10, now+0.06); sg.gain.exponentialRampToValueAtTime(0.001, now+0.55);
-  const lp = sndCtx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.setValueAtTime(500, now); lp.frequency.exponentialRampToValueAtTime(3500, now+0.45);
-  sw.connect(lp); lp.connect(sg); sg.connect(gameBus); sw.start(now); sw.stop(now+0.6);
-  [1046.5, 1568].forEach((f,i)=>{
+  const th = sndCtx.createOscillator(), thG = sndCtx.createGain();                                   // ① 低音
+  th.type='sine'; th.frequency.setValueAtTime(110, now); th.frequency.exponentialRampToValueAtTime(38, now+0.35);
+  thG.gain.setValueAtTime(0.0001, now); thG.gain.exponentialRampToValueAtTime(0.34, now+0.012); thG.gain.exponentialRampToValueAtTime(0.001, now+0.40);
+  th.connect(thG); thG.connect(gameBus); th.start(now); th.stop(now+0.45);
+  const sw = sndCtx.createOscillator(), sg = sndCtx.createGain();                                    // ② うなり
+  sw.type='sawtooth'; sw.frequency.setValueAtTime(120, now); sw.frequency.exponentialRampToValueAtTime(1500, now+0.75);
+  sg.gain.setValueAtTime(0.0001, now); sg.gain.exponentialRampToValueAtTime(0.13, now+0.08); sg.gain.setValueAtTime(0.13, now+0.55); sg.gain.exponentialRampToValueAtTime(0.001, now+0.95);
+  const lp = sndCtx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.setValueAtTime(450, now); lp.frequency.exponentialRampToValueAtTime(4200, now+0.75);
+  sw.connect(lp); lp.connect(sg); sg.connect(gameBus); sw.start(now); sw.stop(now+1.0);
+  const nb = sndCtx.createBuffer(1, Math.floor(sndCtx.sampleRate*1.1), sndCtx.sampleRate), nd = nb.getChannelData(0);   // ③ 風切り
+  for(let i=0;i<nd.length;i++) nd[i]=Math.random()*2-1;
+  const ns = sndCtx.createBufferSource(); ns.buffer = nb;
+  const bp = sndCtx.createBiquadFilter(); bp.type='bandpass'; bp.Q.value=0.8;
+  bp.frequency.setValueAtTime(350, now); bp.frequency.exponentialRampToValueAtTime(5200, now+0.8);
+  const ng = sndCtx.createGain();
+  ng.gain.setValueAtTime(0.0001, now); ng.gain.exponentialRampToValueAtTime(0.20, now+0.30); ng.gain.exponentialRampToValueAtTime(0.001, now+1.0);
+  ns.connect(bp); bp.connect(ng); ng.connect(gameBus); ns.start(now); ns.stop(now+1.05);
+  [1046.5, 1318.5, 1568, 2093].forEach((f,i)=>{                                                       // ④ アルペジオ
     const o = sndCtx.createOscillator(), g2 = sndCtx.createGain(); o.type='triangle'; o.frequency.value=f;
-    const t0 = now + 0.28 + i*0.07;
-    g2.gain.setValueAtTime(0.0001,t0); g2.gain.exponentialRampToValueAtTime(0.10,t0+0.02); g2.gain.exponentialRampToValueAtTime(0.001,t0+0.32);
-    o.connect(g2); g2.connect(gameBus); o.start(t0); o.stop(t0+0.34);
+    const t0 = now + 0.30 + i*0.065;
+    g2.gain.setValueAtTime(0.0001,t0); g2.gain.exponentialRampToValueAtTime(0.10,t0+0.02); g2.gain.exponentialRampToValueAtTime(0.001,t0+0.34);
+    o.connect(g2); g2.connect(gameBus); o.start(t0); o.stop(t0+0.38);
   });
 }
+
 function playCrashSound(){
   if(!sndReady) return;
   const now = sndCtx.currentTime;

@@ -100,12 +100,12 @@ const COIN_ONC_VALUE=2;          // 対向車線のコイン1枚の価値（危�
 const COIN_FIRST=[150,300];      // 最初のコイン列までの距離の範囲(m)
 const COIN_EVERY=[300,500];      // 次のコイン列までの距離の範囲(m)（平均 400m ≒ 1kmに6枚前後を取れる）
 let bonusCoins=[];
-// 道路に落ちている「エネルギータンク」（16o-racing-energy.js）。取ると ENERGY_TIME 秒の間、最高速が +ENERGY_VMAX_BONUS km/h（加速も ×ENERGY_ACCEL_MULT）。
+// 道路に落ちている「エネルギータンク」（16o-racing-energy.js）。取ると ENERGY_TIME 秒の間、最高速が +ENERGY_VMAX_BONUS km/h（加速も ×ENERGY_ACCEL_MULT）。演出（光・音・スピードライン）は 16o の EnergyTank.level() 一つから決める。
 // 無敵ではない（ぶつかればハートは減る）。速くなる＝同じ秒数で遠くまで行ける代わりに、避ける余裕・カーブの外への流れ（速度の2乗）がきつくなる。
 // 約 ENERGY_EVERY(m) に1個（星・ハートと同じ約2km間隔だが、取るかどうかはプレイヤーの判断）。
 const ENERGY_TIME=INV_TIME;           // 効果の長さ（星と同じ）
-const ENERGY_VMAX_BONUS=50;           // 最高速に足す km/h
-const ENERGY_ACCEL_MULT=1.6;          // 効果中の加速の倍率（+50km/h に約1秒で届くように）
+const ENERGY_VMAX_BONUS=70;           // 最高速に足す km/h（v1.9.1: 50→70）
+const ENERGY_ACCEL_MULT=1.6;          // 効果中の加速の倍率（+70km/h に約0.6秒で届く）
 const ENERGY_DECAY=45;                // 効果が切れた後、最高速を超えている分が減っていく速さ km/h/s（急に落とさない）
 const ENERGY_FIRST=[1200,1800];       // 最初のタンクまでの距離の範囲(m)
 const ENERGY_EVERY=[1400,2200];       // 次のタンクまでの距離の範囲(m)（平均 1.8km）

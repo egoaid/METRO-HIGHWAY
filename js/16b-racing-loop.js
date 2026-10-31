@@ -155,7 +155,7 @@ function frame(t){
   // ══ エネルギータンク ══（16o-racing-energy.js）
   if(mode===MODE.PLAY) EnergyTank.update(dt);
 
-  updateEngineSound(player.speed, mode===MODE.PLAY?Garage.stats().vmax+(player.energy>0?ENERGY_VMAX_BONUS:0):SPD_MAX);   // 効果中は最高速が +50 なのでギアの割り当ても合わせる
+  updateEngineSound(player.speed, mode===MODE.PLAY?Garage.stats().vmax+(player.energy>0?ENERGY_VMAX_BONUS:0):SPD_MAX);   // 効果中は最高速が +ENERGY_VMAX_BONUS なのでギアの割り当ても合わせる
   drawScene(t,bpm);
   if(mode===MODE.OVER)drawGameOver();
 }
@@ -168,9 +168,14 @@ function drawScene(t,bpm){
   // drawWorld 中だけ H を枠の高さに差し替えるので、投影式(proj/_projWorld など)は H をそのまま使える。
   const realH=H;
   // 高速時は世界だけを縦に微振動させる（HUD は揺らさない）
-  const shk=SpeedFx.shakeY(t,player.speed,Math.max(1,SH/540));
-  g.save();g.translate(0,SY0+shk);H=SH;
+  const en=(typeof EnergyTank!=='undefined')?EnergyTank.level():0;     // エネルギータンクの演出の強さ 0〜1（16o。光・音・スピードラインは全てこの1つから決める）
+  const shk=SpeedFx.shakeY(t,player.speed,Math.max(1,SH/540),en);
+  const ez=(typeof EnergyTank!=='undefined')?EnergyTank.zoom():1;     // 取得の瞬間にぐっと寄り、効果中は少し寄ったまま（消失点＝画面中心を固定して拡大）
+  g.save();g.translate(0,SY0+shk);
+  if(ez!==1){g.translate(W*0.5,SH*0.5);g.scale(ez,ez);g.translate(-W*0.5,-SH*0.5);}
+  H=SH;
   try{drawWorld(t,bpm);}finally{H=realH;g.restore();}
+  if(mode===MODE.PLAY&&typeof EnergyTank!=='undefined')EnergyTank.drawScreenFx(g,W,realH,t);   // 取得フラッシュ・画面の縁の光（実画面の座標）
 
   // 被弾フラッシュ・HUD は実画面の座標で描く
   if(mode===MODE.PLAY&&game.hitTimer>70){
@@ -190,7 +195,7 @@ function drawWorld(t,bpm){
   Hologram.update(t);                         // グリッチ/山脈の配色のスケジュール
   const EXT=SY0+6;                            // 上へ延長する空の高さ（振動の余白 6px を含む）
   // afterglow（縦長画面の延長した空・手前の路面も含めて消す。高速ほど残像が長い）
-  g.fillStyle=`rgba(0,4,8,${SpeedFx.trailAlpha(player.speed)})`;g.fillRect(0,-EXT,W,HB+EXT+6);
+  g.fillStyle=`rgba(0,4,8,${SpeedFx.trailAlpha(player.speed,(typeof EnergyTank!=='undefined')?EnergyTank.level():0)})`;g.fillRect(0,-EXT,W,HB+EXT+6);
 
   // 空（縦長画面では上へ延長）
   const sg=g.createLinearGradient(0,-EXT,0,HY);
@@ -442,7 +447,7 @@ function drawWorld(t,bpm){
   // ── スピードライン（高速時のみ。消失点から左右へ放射。車より後ろの層）──
   {
     const vp=slices[slices.length-1].p;
-    SpeedFx.drawStreaks(g,W,H,vp?vp.cx:W*0.5,HY,t,player.speed);
+    SpeedFx.drawStreaks(g,W,H,vp?vp.cx:W*0.5,HY,t,player.speed,(typeof EnergyTank!=='undefined')?EnergyTank.level():0);
   }
 
   // ── 交通車両 ──

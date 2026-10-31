@@ -747,6 +747,18 @@ function drawPlayerCar(g,bpm,t){
   // road と同一の cxAcc（直前の道路中心オフセット）と単位系を共有する。
   // 車種と色はガレージの車（PLAY中は選んだ車、タイトル中は見ている車）
   const pc = Garage.shownCar();
+  // エネルギータンク（v1.9.1）: 車の「後ろ」（カメラ寄り）に緑の残像を3枚、加算合成で先に重ねる（本体はその上に描く）
+  const eg = (typeof EnergyTank !== 'undefined') ? EnergyTank.carGlow(t) : 0;
+  if (eg > 0.02) {
+    g.save();
+    g.globalCompositeOperation = 'lighter';
+    for (let i = 3; i >= 1; i--) {
+      g.globalAlpha = 0.30 * eg / i;
+      drawCar3D(g, player.x * ROADW, 0, PLAYER_Z - i * 55, roadCenterOffsetPx,
+                '#3dffa6', '#9dffd8', yaw, rollZ, pc.type, true, false, Garage.visScale(pc));
+    }
+    g.restore();
+  }
   drawCar3D(g, player.x * ROADW, 0, PLAYER_Z, roadCenterOffsetPx,
             pc.color, '#5df0c8', yaw, rollZ, pc.type, true, false, Garage.visScale(pc));
 
@@ -767,5 +779,23 @@ function drawPlayerCar(g,bpm,t){
       g.restore();
     }
   }
+
+  // エネルギータンク: 車全体が緑に光る（光暈＋同じ車を緑で加算合成）。強さ・点滅は EnergyTank.carGlow（取得の瞬間は特に強い）
+  if (eg > 0.02) {
+    const pulse = 0.5 + 0.5 * Math.sin(t * 0.02);
+    const c = _projWorld(player.x * ROADW, 180, PLAYER_Z, roadCenterOffsetPx);
+    const rad = WORLD_CAR_HALF_W * (CAM_D / PLAYER_Z) * (W * 0.5) * 3.6;
+    g.save();
+    g.globalAlpha = Math.min(1, eg);
+    Roadside.glow(g, 'enAura', [60, 255, 170], 0.65 + 0.20 * pulse, 0.24, c.sx, c.sy, Math.max(8, rad));
+    g.restore();
+    g.save();
+    g.globalCompositeOperation = 'lighter';
+    g.globalAlpha = Math.min(0.6, (0.14 + 0.14 * pulse) * eg);
+    drawCar3D(g, player.x * ROADW, 0, PLAYER_Z, roadCenterOffsetPx,
+              '#3dffa6', '#c8ffe8', yaw, rollZ, pc.type, true, false, Garage.visScale(pc));
+    g.restore();
+  }
+  if (typeof EnergyTank !== 'undefined') EnergyTank.drawRing(g, t);        // 取得の瞬間の衝撃リング
 }
 

@@ -131,6 +131,8 @@ window.Hologram = (function(){
 //  3) 画面の微振動（縦方向）
 //  4) 残像（高速ほど長く残る）
 //  5) 道路端の反射ポスト（16a/16f）が近景を速く流れる（常時）
+//  6) エネルギータンク中（v1.9.1）: 追加の引数 e(0〜1) で 2)3)4) をさらに強める。スピードラインは本数が倍・長く・速く・広い角度・緑がかる。
+//     e は EnergyTank.level()（最高速を超えた分 ÷ +ENERGY_VMAX_BONUS）。見かけの進行速度 vis() は変えない（物理・難易度に影響させない）。
 window.SpeedFx = (function(){
   const START = 120, FULL = 220, GAIN = 1.5;
   function level(v){
@@ -139,13 +141,14 @@ window.SpeedFx = (function(){
   }
   function vis(v){ return v <= START ? v : START + (v - START)*GAIN; }
   // 縦の微振動(px)。k = 画面サイズの補正（H/540 程度）
-  function shakeY(t, v, k){
-    const sp = level(v);
+  function shakeY(t, v, k, e){
+    e = e || 0;
+    const sp = Math.max(level(v), e*0.7);
     if(sp <= 0) return 0;
-    return (Math.sin(t*0.047) + 0.7*Math.sin(t*0.0113 + 1.3) + 0.4*Math.sin(t*0.131))*sp*0.9*k;
+    return (Math.sin(t*0.047) + 0.7*Math.sin(t*0.0113 + 1.3) + 0.4*Math.sin(t*0.131))*sp*0.9*k*(1 + 0.8*e);
   }
   // 残像の消し込みアルファ（小さいほど残る）
-  function trailAlpha(v){ return 0.50 - 0.16*level(v); }
+  function trailAlpha(v, e){ return 0.50 - 0.16*level(v) - 0.12*(e || 0); }
 
   // スピードライン: 消失点(vx,vy)から左右へ放射。角度は±35°（水平付近）に限る（道路の中央は避ける）。
   const N = 28, STREAKS = [];
@@ -154,26 +157,32 @@ window.SpeedFx = (function(){
     const off = (base*70 - 35)*Math.PI/180;
     STREAKS.push({ ang: side > 0 ? off : Math.PI + off, phase: (i*0.37) % 1, k: 0.7 + ((i*0.29) % 1)*0.6, len: 0.5 + ((i*0.53) % 1)*0.8 });
   }
-  function drawStreaks(g, w, sh, vx, vy, t, v){
-    const sp = level(v);
+  function drawStreaks(g, w, sh, vx, vy, t, v, e){
+    e = e || 0;
+    const sp = Math.max(level(v), e);
     if(sp < 0.03) return;
-    const R = Math.hypot(w, sh*2), flat = sh/w, rate = 0.6 + 1.6*sp;
+    const R = Math.hypot(w, sh*2), flat = sh/w, rate = 0.6 + 1.6*sp + 1.4*e;
+    const col = `${200 - 80*e|0},255,${245 - 55*e|0}`;                      // 通常は白っぽい水色 → ブースト中は緑
     g.save();
     g.globalCompositeOperation = 'lighter';
     g.lineCap = 'round';
-    for(const s of STREAKS){
-      const u = (s.phase + t*0.001*rate*s.k) % 1;
-      // 画面の周辺だけ（消失点から離れた位置で出現し、外へ伸びながら流れる）。道路や車の近くは通らない
-      const r0 = R*(0.30 + 0.45*u*u), r1 = r0 + R*(0.02 + 0.12*u)*s.len;
-      const a = sp*0.32*Math.sin(Math.PI*u);
-      if(a < 0.01) continue;
-      const c = Math.cos(s.ang), sn = Math.sin(s.ang)*flat*2;
-      g.strokeStyle = `rgba(200,255,245,${a})`;
-      g.lineWidth = Math.max(1, w/900*(1 + 1.6*u));
-      g.beginPath();
-      g.moveTo(vx + c*r0, vy + sn*r0);
-      g.lineTo(vx + c*r1, vy + sn*r1);
-      g.stroke();
+    for(let pass = 0; pass < (e > 0.05 ? 2 : 1); pass++){                  // ブースト中は本数が倍（2周目は位相をずらす）
+      const pk = pass ? e : 1;
+      for(let i = 0; i < STREAKS.length; i++){
+        const s = STREAKS[i];
+        const u = (s.phase + (pass ? 0.5 : 0) + t*0.001*rate*s.k*(pass ? 1.15 : 1)) % 1;
+        // 画面の周辺だけ（消失点から離れた位置で出現し、外へ伸びながら流れる）。道路や車の近くは通らない
+        const r0 = R*(0.30 + 0.45*u*u), r1 = r0 + R*(0.02 + 0.12*u)*s.len*(1 + 0.8*e);
+        const a = sp*0.32*(1 + 0.9*e)*pk*Math.sin(Math.PI*u);
+        if(a < 0.01) continue;
+        const ang = s.ang, c = Math.cos(ang), sn = Math.sin(ang)*flat*2*(1 + 0.45*e);   // 角度は上下へ少し広がる
+        g.strokeStyle = `rgba(${col},${Math.min(0.9, a)})`;
+        g.lineWidth = Math.max(1, w/900*(1 + 1.6*u)*(1 + 0.8*e));
+        g.beginPath();
+        g.moveTo(vx + c*r0, vy + sn*r0);
+        g.lineTo(vx + c*r1, vy + sn*r1);
+        g.stroke();
+      }
     }
     g.restore();
   }
