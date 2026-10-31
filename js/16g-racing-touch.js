@@ -92,7 +92,7 @@ window.VfdTouch = (function(){
   document.addEventListener('vfd-fullscreenchange', e=>{
     if(e.detail.active) return;
     release();
-    if(IS_TOUCH_DEVICE && (mode === MODE.PLAY || mode === MODE.OVER)){
+    if(mode === MODE.PLAY || mode === MODE.OVER){                      // 通常画面に戻ったらゲームを終了してデモに戻す（スマホもPCも。v1.10.1）
       mode = MODE.DEMO; player.speed = 0; player.x = 0; player.xv = 0; player.bank = 0;
       player.slip = 0; player.slipV = 0; player.slideV = 0; traffic = [];
       const gb = document.getElementById('vfdGameBtn');

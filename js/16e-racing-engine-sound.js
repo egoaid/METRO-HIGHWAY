@@ -138,8 +138,30 @@ function applyEngineProfile(id){
   engState.prof = id; engState.gear = -1; engState.boost = 0;
 }
 
+// ── ゲーム音を鳴らしてよいか（v1.10.1）──
+// フルスクリーン中、または実際に走行中/ゲームオーバー中だけ。通常画面のシンセ編集画面で動いているデモ（タイトルの自動走行）では
+// ゲーム音を完全に止める（エンジンの待機音もガレージの購入音も。ゲーム用の AudioContext 自体を suspend する）。
+function gameSoundOn(){
+  const fs = !!(window.VfdFullscreen && VfdFullscreen.isActive());
+  return fs || mode===MODE.PLAY || mode===MODE.OVER;
+}
+let _gameSoundOn = null;
+function syncGameSound(){
+  if(!sndReady) return false;
+  const on = gameSoundOn();
+  if(on !== _gameSoundOn){
+    _gameSoundOn = on;
+    try{ if(on){ const r = sndCtx.resume(); if(r && r.catch) r.catch(()=>{}); } else { const r = sndCtx.suspend(); if(r && r.catch) r.catch(()=>{}); } }catch(_){}
+  }
+  return on;
+}
+
 function updateEngineSound(speed, maxSpeed){
   if(!sndReady||!eng) return;
+  if(!syncGameSound()){                                   // 通常画面のデモ: 完全に無音（エンジンの待機音も出さない）
+    try{ eng.master.gain.cancelScheduledValues(sndCtx.currentTime); eng.master.gain.setValueAtTime(0, sndCtx.currentTime); }catch(_){}
+    return;
+  }
   const now = sndCtx.currentTime, E = eng;
   const id = engProfileId(); if(engState.prof !== id) applyEngineProfile(id);
   const P = ENGINES[id];
@@ -215,14 +237,14 @@ function updateEngineSound(speed, maxSpeed){
 
 // ターボのブローオフ（アクセルを戻した時の「プシュッ」）
 function blowOff(now){
-  if(!eng) return; const g = eng.boG.gain;
+  if(!eng || !syncGameSound()) return; const g = eng.boG.gain;
   g.cancelScheduledValues(now); g.setValueAtTime(0.0001, now);
   g.linearRampToValueAtTime(0.20, now + 0.012); g.exponentialRampToValueAtTime(0.001, now + 0.45);
   engState.boost *= 0.4;
 }
 
 function playStarSound(){
-  if(!sndReady) return;
+  if(!sndReady || !syncGameSound()) return;
   // 星を取った時: 明るい上昇アルペジオ（C6 E6 G6 C7）
   const now = sndCtx.currentTime;
   [1046.5,1318.5,1568,2093].forEach((f,i)=>{
@@ -237,7 +259,7 @@ function playStarSound(){
   });
 }
 function playHeartSound(){
-  if(!sndReady) return;
+  if(!sndReady || !syncGameSound()) return;
   // ハートを取った時: やわらかい2音（A5 → E6）。星の明るいアルペジオより控えめ
   const now = sndCtx.currentTime;
   [880,1318.5].forEach((f,i)=>{
@@ -252,7 +274,7 @@ function playHeartSound(){
   });
 }
 function playCoinSound(combo){
-  if(!sndReady) return;
+  if(!sndReady || !syncGameSound()) return;
   // コイン: 短い「チン」。続けて取るほど半音ずつ高くなる（最大7段）
   const now = sndCtx.currentTime, f = 1318.5*Math.pow(2,(combo||0)/12);
   [f, f*1.5].forEach((fr,i)=>{
@@ -267,7 +289,7 @@ function playCoinSound(combo){
   });
 }
 function playPurchaseSound(){
-  if(!sndReady) return;
+  if(!sndReady || !syncGameSound()) return;
   const now = sndCtx.currentTime;
   [523.3,659.3,784,1046.5].forEach((fr,i)=>{
     const osc = sndCtx.createOscillator(), gn = sndCtx.createGain();
@@ -281,7 +303,7 @@ function playPurchaseSound(){
   });
 }
 function playEnergySound(){
-  if(!sndReady) return;
+  if(!sndReady || !syncGameSound()) return;
   // エネルギータンク（v1.9.1・派手）: ①ドンと来る低音 ②下から駆け上がるターボのうなり（長め） ③風切りの「ゴォッ」（ノイズが明るくなる）
   // ④キラッとした上昇アルペジオ。全て gameBus へ（新しいノードは単発で、鳴り終わると止まる）
   const now = sndCtx.currentTime;
@@ -311,7 +333,7 @@ function playEnergySound(){
 }
 
 function playCrashSound(){
-  if(!sndReady) return;
+  if(!sndReady || !syncGameSound()) return;
   const now = sndCtx.currentTime;
   // 衝突音: ノイズバースト + 低音パンチ
   const g2 = sndCtx.createGain();
@@ -342,7 +364,7 @@ function playCrashSound(){
 }
 
 function playPassSound(){
-  if(!sndReady) return;
+  if(!sndReady || !syncGameSound()) return;
   // 追い越し時: ドップラー効果風のスウィープ
   const now = sndCtx.currentTime;
   const osc = sndCtx.createOscillator();

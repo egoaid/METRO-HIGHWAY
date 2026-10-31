@@ -501,6 +501,16 @@ function startGame(){
   if(gb){gb.textContent='DEMO';gb.classList.remove('btn-red');gb.classList.add('btn');}
 }
 
+// フルスクリーンを解除して通常画面（シンセ編集画面）に戻ったら、BGM（ゲーム開始で自動で始まる Auto Drone・リズム・鳴っている音）を止める。
+// ゲーム音の停止は 16e（gameSoundOn: フルスクリーンでなく走行中でもなければ suspend）。ゲームをデモに戻すのは 16g。（v1.10.1）
+function stopBgmForNormalScreen(){
+  const b=document.getElementById('autoDroneBtn');
+  if(b&&b.classList.contains('playing'))b.click();                         // Auto Drone を止める（リズムも一緒に止まる）
+  if(typeof rhythmPlaying!=='undefined'&&rhythmPlaying&&typeof rhythmStop==='function')rhythmStop();
+  if(typeof panicStop==='function')panicStop();                            // シーケンサー・鍵盤など鳴っている音を全て止める
+}
+document.addEventListener('vfd-fullscreenchange',e=>{ if(e.detail&&!e.detail.active)stopBgmForNormalScreen(); });
+
 // pushDir: 車体が流れる向き(+1=右 / -1=左)。相手車なら「相手から離れる側」、
 //          路肩なら「中央へ戻る側」を呼び出し側が渡す。未指定/0(真横一致)のみランダム。
 // 自車の衝突スリップ（横滑り）。kick={yaw,slide} があればそれを使う（衝突位置・速度・重量で決めた値、16i）。
