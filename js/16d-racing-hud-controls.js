@@ -20,6 +20,8 @@ function drawHUD(g,bpm){
 }
 function drawGameHUD(g){
   const fs=Math.round(H*0.032);
+  // スマホの全画面: 画面上部中央に終了ボタン（✕ 44px 級）があるので、星・エネルギーのバーはその下へずらす（PC は 0）
+  const topPad=(IS_TOUCH_DEVICE&&window.VfdFullscreen&&VfdFullscreen.isActive()&&window.VfdUI)?Math.max(0,56*VfdUI.unit()-H*0.085):0;
   g.shadowColor='#5df0c8';g.shadowBlur=4;
   // コイン（この走行で取った数 / 持っている合計）
   g.font=`${Math.round(H*0.034)}px 'Share Tech Mono',monospace`;g.fillStyle='#ffd23a';g.shadowColor='#ffd23a';g.shadowBlur=5;
@@ -48,7 +50,7 @@ function drawGameHUD(g){
   g.fillText(`BEST ${(game.best/1000).toFixed(2)}km`,W-W*0.03,H*0.252);
   // 無敵（星）の残り時間: 画面上部中央に星マークとバー。残り2秒は点滅
   if(player.inv>0){
-    const cx=W*0.5, y=H*0.085, bw=W*0.20, bh=Math.max(4,H*0.012);
+    const cx=W*0.5, y=H*0.085+topPad, bw=W*0.20, bh=Math.max(4,H*0.012);
     const blink=player.inv<2&&(Math.floor(performance.now()/110)%2===0);
     if(!blink){
       g.shadowColor='#ffd24a';g.shadowBlur=8;
@@ -63,7 +65,7 @@ function drawGameHUD(g){
   }
   // エネルギータンクの残り時間: 緑の棒（星の棒の下）。効果が切れる2秒前から点滅
   if(player.energy>0){
-    const cx=W*0.5, y=H*0.158, bw=W*0.20, bh=Math.max(4,H*0.012);
+    const cx=W*0.5, y=H*0.158+topPad, bw=W*0.20, bh=Math.max(4,H*0.012);
     const blink=player.energy<2&&(Math.floor(performance.now()/110)%2===0);
     if(!blink){
       g.shadowColor='#3dffa6';g.shadowBlur=8;

@@ -238,14 +238,85 @@ window.Garage = (function(){
     g.shadowColor = '#5df0c8'; g.shadowBlur = 4;
     const typeTouch = (typeof IS_TOUCH_DEVICE !== 'undefined' && IS_TOUCH_DEVICE);
     if(typeTouch){
-      const w = H*0.30, h = H*0.055, x = (W - w)/2, y = H*0.285;
-      btn(g, 'garage', x, y, w, h, `GARAGE  ◎ ${st.coins}`, 'rgba(93,240,200,0.8)');
+      const u = (typeof VfdUI !== 'undefined') ? VfdUI.unit() : 1, h = 48*u, w = Math.min(W*0.8, 240*u), x = (W - w)/2, y = H*0.30;   // スマホ: 48 CSS px の大きなボタン（押すと全画面にしてガレージを開く）
+      FONT(g, 17*u); btn(g, 'garage', x, y, w, h, `GARAGE  ◎ ${st.coins}`, 'rgba(93,240,200,0.9)');
     }else{
-      g.fillStyle = 'rgba(93,240,200,0.55)'; g.fillText(`G : GARAGE  (CHOOSE · TUNE · PAINT)     ◎ ${st.coins}`, W/2, H*0.31);
+      const fs = Math.max(11, Math.round(H*0.026)), label = `GARAGE   CHOOSE · TUNE · PAINT      ◎ ${st.coins}`;
+      FONT(g, fs); const tw = g.measureText(label).width, cw = Math.max(fs*1.5, g.measureText('G').width + fs*0.9), x0 = W/2 - (cw + fs*0.6 + tw)/2;
+      const xe = (typeof VfdUI !== 'undefined') ? VfdUI.keycap(g, 'G', x0, H*0.31, fs) : x0 + cw;                                  // 押すキー G を枠で見せる
+      FONT(g, fs); g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillStyle = 'rgba(93,240,200,0.8)'; g.fillText(label, xe + fs*0.6, H*0.31); g.textAlign = 'center';
       zones.garage = { x:W*0.25, y:H*0.285, w:W*0.5, h:H*0.05 };
     }
-    if(admin){ g.fillStyle = '#ff7bd0'; g.shadowColor = '#ff7bd0'; g.fillText('ADMIN MODE', W/2, H*0.355); }
+    if(admin){ g.fillStyle = '#ff7bd0'; g.shadowColor = '#ff7bd0'; g.fillText('ADMIN MODE', W/2, typeTouch ? H*0.30 + 62*((typeof VfdUI !== 'undefined') ? VfdUI.unit() : 1) : H*0.355); }
     g.shadowBlur = 0;
+  }
+  // スマホ: 全画面のシート。CSS px 基準（unit）で描き、押せるものは全て見えるボタン（44 CSS px 級）。キーが無い前提で、開始・購入・強化・色・戻る・閉じるが全部ここにある
+  function drawSheet(g){
+    const u = VfdUI.unit(), c = viewCar(), ok = owned(c.id), lvs = lvOf(c.id), eff = statsOf(c);
+    const m = 8*u, px = Math.max(m, (W - 760*u)/2), pw = W - px*2, py = m, ph = (page === 'car') ? Math.min(H - m*2, 240*u) : H - m*2;   // 車の画面は上だけ（下に実物の車が見える）、強化の画面は全高
+    const F = (n, bold) => { g.font = `${bold ? 'bold ' : ''}${Math.round(n*u)}px 'Share Tech Mono',monospace`; };
+    const B = (key, x, y, w, h, text, col, fsz) => {
+      zones[key] = { x, y, w, h };
+      g.shadowBlur = 0; g.strokeStyle = col; g.lineWidth = Math.max(1, u); g.fillStyle = 'rgba(8,24,30,0.85)'; g.fillRect(x, y, w, h); g.strokeRect(x, y, w, h);
+      F(fsz || 15); g.fillStyle = col; g.textAlign = 'center'; g.fillText(text, x + w/2, y + h/2 + u); g.shadowBlur = 4;
+    };
+    g.fillStyle = (page === 'car') ? 'rgba(2,10,16,0.94)' : 'rgba(2,10,16,0.96)'; g.fillRect(px, py, pw, ph);
+    g.strokeStyle = 'rgba(93,240,200,0.45)'; g.lineWidth = Math.max(1, u); g.strokeRect(px, py, pw, ph);
+    g.shadowColor = '#5df0c8'; g.shadowBlur = 4; g.textBaseline = 'middle';
+    // ヘッダー: [✕] [◀]  車名  [▶]
+    const hy = py + 4*u, hb = 48*u;
+    B('close', px + 4*u, hy, hb, hb, '✕', 'rgba(93,240,200,0.85)', 20);
+    B('left',  px + 4*u + hb + 6*u, hy, hb, hb, '◀', '#5df0c8', 20);
+    B('right', px + pw - 4*u - hb, hy, hb, hb, '▶', '#5df0c8', 20);
+    F(21, true); g.textAlign = 'center'; g.fillStyle = ok ? '#5df0c8' : 'rgba(93,240,200,0.6)'; g.fillText(c.name, ((px + 4*u + hb*2 + 6*u) + (px + pw - 4*u - hb))/2, hy + hb/2);
+    F(12); g.fillStyle = 'rgba(93,240,200,0.65)'; g.textAlign = 'left'; g.fillText(c.role + (page === 'tune' ? '  ·  TUNE' : ''), px + 10*u, hy + hb + 12*u);
+    g.textAlign = 'right'; g.fillStyle = '#ffd23a'; g.shadowColor = '#ffd23a'; g.fillText(`◎ ${st.coins}${admin ? '  ADMIN' : ''}`, px + pw - 10*u, hy + hb + 12*u); g.shadowColor = '#5df0c8';
+    const top = hy + hb + 26*u, bot = py + ph - 6*u;
+    if(page === 'car'){
+      const bh = 52*u, by = bot - bh, colW = (pw - 36*u)/2, keys6 = ['handling','vmax','accel','brake','grip','mass'];
+      const avail = by - 10*u - top, pitch = Math.min(30*u, avail/3);
+      F(12); const lwMax = Math.max(...keys6.map(k => g.measureText(LABEL[k]).width)) + 8*u;     // 項目名の幅に合わせて棒を始める（狭い縦画面でも重ならない）
+      keys6.forEach((k, i) => {                                                    // 性能バー（強化込み。黄色が強化で増えた分）
+        const x = px + 12*u + (i < 3 ? 0 : colW + 12*u), y = top + pitch*(i%3 + 0.5), r = RANGE[k];
+        const base = (c.s[k] - r[0])/(r[1] - r[0]), bonus = (eff[k] - c.s[k])/(r[1] - r[0]);
+        F(12); g.textAlign = 'left'; g.fillStyle = k === 'handling' ? '#ffd23a' : 'rgba(93,240,200,0.75)'; g.fillText(LABEL[k], x, y);
+        bar(g, x + lwMax, y - 4*u, Math.max(30*u, colW - lwMax), 8*u, base, ok ? '#5df0c8' : 'rgba(93,240,200,0.5)', bonus);
+      });
+      let label, col;
+      if(admin && !st.owned.includes(c.id)){ label = 'ADMIN · UNLOCKED  ▶ START'; col = '#ff7bd0'; }
+      else if(ok){ label = '▶  START'; col = '#5df0c8'; }
+      else if(st.coins >= c.price){ label = `BUY  ◎ ${c.price}`; col = '#ffd23a'; }
+      else { label = `◎ ${c.price}   NEED ${c.price - st.coins} MORE`; col = '#ff7060'; }
+      const aw = ok ? (pw - 24*u)*0.62 : pw - 24*u;
+      B('action', px + 12*u, by, aw, bh, label, col, 17);
+      if(ok) B('tune', px + 12*u + aw + 8*u, by, pw - 24*u - aw - 8*u, bh, 'TUNE', '#ffd23a', 16);
+      if(msgT > 0 && msg){ F(12); g.fillStyle = '#ffd23a'; g.textAlign = 'center'; g.fillText(msg, W/2, by - 12*u); }
+      else if(ok){ F(12); g.fillStyle = 'rgba(93,240,200,0.55)'; g.textAlign = 'center'; g.fillText(c.id === st.sel ? 'SELECTED' : 'OWNED', W/2, by - 12*u); }
+    }else{
+      const backH = 44*u, payH = 44*u, rowsH = bot - top - backH - payH - 10*u, pitch = Math.max(30*u, Math.min(46*u, rowsH/TUNE_KEYS.length));
+      TUNE_KEYS.forEach((k, i) => {
+        const y = top + pitch*(i + 0.5), lv = lvs[k], T = TUNE[k];
+        F(13); g.textAlign = 'left'; g.fillStyle = 'rgba(93,240,200,0.85)'; g.fillText(T.label, px + 12*u, y);
+        for(let n = 0; n < MAXLV; n++){ g.fillStyle = n < lv ? '#ffd23a' : 'rgba(93,240,200,0.16)'; g.fillRect(px + pw*0.30 + n*12*u, y - 5*u, 9*u, 10*u); }
+        const v = (k === 'vmax' || k === 'accel' || k === 'brake') ? Math.round(eff[k]) : eff[k].toFixed(2);
+        F(13); g.fillStyle = 'rgba(93,240,200,0.85)'; g.textAlign = 'left'; g.fillText(String(v), px + pw*0.30 + MAXLV*12*u + 8*u, y);
+        const nextCost = lv >= MAXLV ? null : (admin ? 0 : T.cost[lv]), can = nextCost !== null && st.coins >= nextCost, bw = Math.min(124*u, pw*0.30);
+        B('up' + i, px + pw - 10*u - bw, y - (pitch - 4*u)/2, bw, pitch - 4*u, nextCost === null ? 'MAX' : `▲ ◎ ${nextCost}`, nextCost === null ? 'rgba(93,240,200,0.5)' : (can ? '#ffd23a' : '#ff7060'), 14);
+      });
+      const sy = top + pitch*TUNE_KEYS.length + 6*u, sw = Math.min(44*u, (pw - 24*u)/PAINTS.length - 4*u), gap = Math.min(6*u, (pw - 24*u - sw*PAINTS.length)/Math.max(1, PAINTS.length - 1)), total = PAINTS.length*sw + (PAINTS.length - 1)*gap;
+      let sx = px + (pw - total)/2;
+      PAINTS.forEach((p, i) => {
+        zones['sw' + i] = { x:sx, y:sy, w:sw, h:sw };
+        g.fillStyle = p.hex; g.shadowColor = p.hex; g.fillRect(sx, sy, sw, sw);
+        const cur = paintOf(c).toLowerCase() === p.hex.toLowerCase();
+        g.strokeStyle = cur ? '#ffffff' : 'rgba(93,240,200,0.3)'; g.lineWidth = cur ? 2*u : Math.max(1, u); g.strokeRect(sx, sy, sw, sw);
+        if(!paintOpen(p)){ g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(sx, sy, sw, sw); g.fillStyle = '#ffd23a'; F(11); g.textAlign = 'center'; g.fillText(String(p.price), sx + sw/2, sy + sw/2); }
+        sx += sw + gap;
+      });
+      g.shadowColor = '#5df0c8'; g.lineWidth = 1;
+      F(12); g.textAlign = 'center'; g.fillStyle = msgT > 0 && msg ? '#ffd23a' : 'rgba(93,240,200,0.6)'; g.fillText(msgT > 0 && msg ? msg : 'TAP ▲ TO UPGRADE · TAP A COLOUR TO PAINT', W/2, bot - backH/2);
+      B('back', px + 12*u, bot - backH, 100*u, backH, '◀ BACK', 'rgba(93,240,200,0.9)', 14);
+    }
   }
   // 戻り値: ガレージのパネルを描いたら true（閉じていて案内だけなら false）
   function drawPanel(g, dt){
@@ -253,6 +324,7 @@ window.Garage = (function(){
     if(msgT > 0) msgT = Math.max(0, msgT - (dt || 0.033));
     g.save();
     if(!open){ drawHint(g); g.restore(); return false; }
+    if((typeof IS_TOUCH_DEVICE !== 'undefined' && IS_TOUCH_DEVICE) && typeof VfdUI !== 'undefined' && !VfdUI.compact()){ drawSheet(g); g.restore(); return true; }   // スマホ: 全画面のシート
     const c = viewCar(), ok = owned(c.id), lvs = lvOf(c.id), eff = statsOf(c);
     const pw = Math.min(W*0.94, H*1.35), ph = H*0.31, px = (W - pw)/2, py = H*0.285;
     g.fillStyle = 'rgba(2,10,16,0.70)'; g.fillRect(px, py, pw, ph);
@@ -265,7 +337,7 @@ window.Garage = (function(){
     g.fillStyle = '#5df0c8'; g.fillText('◀', px + pw*0.10, py + ph*0.10); g.fillText('▶', px + pw*0.90, py + ph*0.10);
     zones.left  = { x:px, y:py, w:pw*0.22, h:ph*0.20 };
     zones.right = { x:px + pw*0.78, y:py, w:pw*0.22, h:ph*0.20 };
-    FONT(g, fs); g.fillStyle = 'rgba(93,240,200,0.7)'; g.fillText('✕', px + pw - fs, py + fs*0.8); zones.close = { x:px + pw - fs*2.2, y:py, w:fs*2.2, h:fs*1.8 };
+    FONT(g, fs*1.5); g.fillStyle = 'rgba(93,240,200,0.9)'; g.fillText('✕', px + pw - fs, py + fs*0.9); FONT(g, fs); zones.close = { x:px + pw - fs*2.2, y:py, w:fs*2.2, h:fs*1.8 };
     // 所持コイン
     g.textAlign = 'left'; g.fillStyle = '#ffd23a'; g.shadowColor = '#ffd23a'; g.fillText(`◎ ${st.coins}`, px + 8, py + fs*0.8);
     if(admin){ g.fillStyle = '#ff7bd0'; g.shadowColor = '#ff7bd0'; g.fillText('ADMIN', px + 8, py + fs*2.0); }
@@ -296,7 +368,7 @@ window.Garage = (function(){
       g.shadowColor = '#5df0c8';
       if(ok){ FONT(g, fs*0.9); btn(g, 'tune', px + pw*0.80, py + ph*0.78, pw*0.18, ph*0.18, 'TUNE', '#ffd23a'); }
       FONT(g, fs*0.7); g.textAlign = 'center'; g.fillStyle = 'rgba(93,240,200,0.4)';
-      g.fillText(IS_TOUCH_DEVICE ? '' : '← → CAR     T TUNE     G CLOSE     SPACE START/BUY', W/2, py + ph + fs*0.9);
+      if(!IS_TOUCH_DEVICE && typeof VfdUI !== 'undefined') VfdUI.legendRow(g, [['← →','CAR'], ['T','TUNE'], ['G','CLOSE'], ['SPACE','START / BUY']], py + ph + fs*1.7, fs*0.95, 1);
     }else{
       // 強化ページ: 5項目（段階の四角・値・値段）と 色
       const rowsTop = 0.34, step = 0.105;
@@ -333,30 +405,37 @@ window.Garage = (function(){
       g.fillText(msgT > 0 && msg ? msg : (row === TUNE_KEYS.length ? `PAINT: ${PAINTS[colIdx].id.toUpperCase()}${paintOpen(PAINTS[colIdx]) ? '' : '  ◎ ' + PAINTS[colIdx].price}` : 'ENTER: UPGRADE'), W/2, py + ph*0.955);
       btn(g, 'back', px + pw*0.02, py + ph*0.88, pw*0.14, ph*0.10, 'BACK', 'rgba(93,240,200,0.8)');
       FONT(g, fs*0.7); g.fillStyle = 'rgba(93,240,200,0.4)';
-      g.fillText(IS_TOUCH_DEVICE ? '' : '↑ ↓ ROW     ← → CAR / COLOUR     ENTER UPGRADE · APPLY     T BACK', W/2, py + ph + fs*0.9);
+      if(!IS_TOUCH_DEVICE && typeof VfdUI !== 'undefined') VfdUI.legendRow(g, [['↑ ↓','ROW'], ['← →','CAR / COLOUR'], ['ENTER','UPGRADE / APPLY'], ['T','BACK']], py + ph + fs*1.7, fs*0.95, 1);
     }
     g.restore();
     return true;
   }
 
   // タップ/クリック（clientX/Y）。ガレージの操作に使ったら true。false なら呼び出し側が「開始」として扱う
+  // 当たり判定は VfdUI.pick（最小サイズまで広げ、重なったら中心が近い方）。スマホのシートは「開始」も専用ボタン（それ以外のタップでは開始しない）
   function handleTap(cx, cy){
     if(typeof mode === 'undefined' || mode !== MODE.DEMO) return false;         // 走行中・ゲームオーバー中のタップ（操舵の指など）では何も起きない
     if(typeof cv === 'undefined' || !cv) return false;
-    const r = cv.getBoundingClientRect(); if(!r.width) return false;
-    const x = (cx - r.left)*(W/r.width), y = (cy - r.top)*(H/r.height);          // 描画座標(W×H)へ
-    const hit = z => z && x >= z.x && x <= z.x + z.w && y >= z.y && y <= z.y + z.h;
-    if(!open){ if(hit(zones.garage)){ setOpen(true); return true; } return false; }
-    if(hit(zones.close)){ close(); return true; }
-    if(hit(zones.left))  { select(-1); return true; }
-    if(hit(zones.right)) { select(1);  return true; }
+    const p = VfdUI.toCanvas(cx, cy); if(!p) return false;                       // 描画座標(W×H)へ
+    const k = VfdUI.pick(zones, p.x, p.y), touch = (typeof IS_TOUCH_DEVICE !== 'undefined' && IS_TOUCH_DEVICE);
+    if(!open){
+      if(k === 'garage'){
+        if(touch && window.VfdFullscreen && !VfdFullscreen.isActive()) VfdFullscreen.enter();   // スマホの埋め込み表示: 全画面にしてから開く（狭くて操作しにくいため）
+        setOpen(true); return true;
+      }
+      return false;
+    }
+    if(k === 'close'){ close(); return true; }
+    if(k === 'left')  { select(-1); return true; }
+    if(k === 'right') { select(1);  return true; }
     if(page === 'tune'){
-      if(hit(zones.back)){ page = 'car'; return true; }
-      for(let i = 0; i < TUNE_KEYS.length; i++) if(hit(zones['up' + i])){ row = i; upgrade(TUNE_KEYS[i]); return true; }
-      for(let i = 0; i < PAINTS.length; i++) if(hit(zones['sw' + i])){ row = TUNE_KEYS.length; colIdx = i; paint(i); return true; }
+      if(k === 'back'){ page = 'car'; return true; }
+      if(k && k.startsWith('up')){ const i = +k.slice(2); row = i; upgrade(TUNE_KEYS[i]); return true; }
+      if(k && k.startsWith('sw')){ const i = +k.slice(2); row = TUNE_KEYS.length; colIdx = i; paint(i); return true; }
       return true;
     }
-    if(hit(zones.tune)){ page = 'tune'; row = 0; return true; }
+    if(k === 'tune'){ page = 'tune'; row = 0; return true; }
+    if(touch && !k) return true;                                                 // スマホ: 何もないところのタップでは開始しない（誤タップ防止）
     if(!canStart()){ ready(); return true; }                                     // 未購入の車: タップは購入（開始しない）
     return false;                                                                // 持っている車: 開始
   }

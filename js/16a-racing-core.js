@@ -136,6 +136,10 @@ const keys={L:false,R:false,U:false,D:false,ax:0};
 let roadCenterOffsetPx = 0;
 
 window.addEventListener('keydown',e=>{
+  // 文字入力中（プリセット名など）はゲームのキーを一切使わない（「-」「G」「T」などが入力できなかった。16p）
+  if(typeof VfdUI!=='undefined'&&VfdUI.typing(e))return;
+  // ? = キー一覧、F = フルスクリーン、Esc = 一覧を閉じる（16p）
+  if(typeof VfdUI!=='undefined'&&VfdUI.onKey(e)){e.preventDefault();return;}
   // 音量: - = で BGM、[ ] でゲーム音（どのモードでも・走行中でも。16n）
   if(typeof AudioMix!=='undefined'&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&AudioMix.onKey(e)){e.preventDefault();return;}
   if(e.key==='ArrowLeft') {keys.L=true;e.preventDefault();}

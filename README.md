@@ -46,6 +46,7 @@ and nothing you make is sent anywhere.
   with different top speed, lane-change speed, braking, grip and weight,
   upgrade them and repaint them. Each car has its own engine sound, and
   your garage is saved in the browser and kept across updates.
+  Keyboard: press `?` for all shortcuts (`F` = full screen, `- =` BGM, `[ ]` game sound, `G` garage); the keys are shown on the title screen, and the mouse pointer stays visible in full screen. On phones the buttons are large and the garage opens as a full-screen sheet.
   Playing starts Auto Drone on every device.
   On a phone it plays fullscreen with a single virtual joystick, and Auto
   Drone starts along with the game.

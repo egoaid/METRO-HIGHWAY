@@ -1172,11 +1172,8 @@ html, body {
   height: 100vh !important;
   background: #000408;
 }
-/* フルスクリーン時にカーソルを非表示（ゲームプレイ中） */
-#vfdGameViewport:fullscreen canvas,
-#vfdGameViewport:-webkit-full-screen canvas {
-  cursor: none;
-}
+/* マウスカーソルの出し隠しは 16p（VfdUI）が canvas の style.cursor で行う:
+   フルスクリーンでも常に見える。隠すのは「走行中に 2.5 秒動かさなかった時」だけ。（v1.9.1 までは常に隠していて、BGM/GAME やガレージをクリックできなかった） */
 
 
 /* ════════════════════════════════════════════════
@@ -1225,8 +1222,8 @@ body.vfd-touch.vfd-fs-active #vfdTouchLayer { display: block; }
   position: absolute;
   top: calc(env(safe-area-inset-top, 0px) + 8px);
   left: 50%; transform: translateX(-50%);
-  width: 40px; height: 28px; padding: 0;
-  font-size: 14px; line-height: 1;
+  width: 56px; height: 44px; padding: 0;                /* 押しやすい大きさ（44px 以上）。星・エネルギーのバーはこの下に出る（16d） */
+  font-size: 18px; line-height: 1;
   color: #5df0c8; background: rgba(0,4,8,0.55);
   border: 1px solid rgba(93,240,200,0.45); border-radius: 4px;
   cursor: pointer;
@@ -1269,4 +1266,16 @@ html, body, body * {
 body input, body textarea, body [contenteditable="true"], body [contenteditable=""] {
   -webkit-user-select: text;
   user-select: text;
+}
+
+
+/* ════════════════════════════════════════════════
+   v1.9.2 — スマホ（タッチ）で押しやすく: ゲームカードのボタンを大きく
+   ════════════════════════════════════════════════ */
+@media (pointer: coarse) {
+  #vfdGameBtn, #vfdToggleBtn, #vfdFullscreenBtn {
+    height: 36px !important; min-width: 48px; padding: 0 14px !important; font-size: 11px !important; letter-spacing: 1.5px;
+  }
+  #vfdFullscreenBtn { font-size: 20px !important; }
+  #vfdUptimeDisplay { font-size: 10px !important; }
 }

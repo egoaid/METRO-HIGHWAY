@@ -184,8 +184,9 @@ function drawScene(t,bpm){
   drawHUD(g,bpm);
   if(mode===MODE.DEMO)drawDemoOverlay(g);
   AudioMix.draw(g);                                      // 音量の表示（タイトルでは常に、他は調整した直後の2秒）
+  if(typeof VfdUI!=='undefined'){VfdUI.tick();VfdUI.draw(g);}   // キーの案内・一覧・カーソルの出し隠し（16p）
   if(mode===MODE.PLAY||mode===MODE.OVER)drawGameHUD(g);
-  drawLogs(g);
+  if(!(IS_TOUCH_DEVICE&&typeof Garage!=='undefined'&&Garage.isOpen()))drawLogs(g);   // スマホのガレージ（全画面シート）の上にはログを出さない
 }
 
 function drawWorld(t,bpm){

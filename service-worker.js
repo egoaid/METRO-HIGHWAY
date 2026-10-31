@@ -7,7 +7,7 @@
 // never block the app if offline.
 // ════════════════════════════════════════════════
 
-const CACHE_VERSION = 'metro-highway-v1.9.1';
+const CACHE_VERSION = 'metro-highway-v1.9.2';
 const CACHE_NAME = `metro-highway-cache-${CACHE_VERSION}`;
 
 const APP_SHELL = [
@@ -45,6 +45,7 @@ const APP_SHELL = [
   './js/16m-racing-coin.js',
   './js/16n-racing-mix.js',
   './js/16o-racing-energy.js',
+  './js/16p-racing-ui.js',
   './js/17-auto-drone-engine.js',
   './js/18-manual.js',
   './js/19-app-update.js',
