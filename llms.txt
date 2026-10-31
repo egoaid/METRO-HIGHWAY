@@ -8,7 +8,7 @@ Official URL: https://egoaid.github.io/METRO-HIGHWAY/
 - Subtractive synth engine with presets (pianos, organs, strings, brass, woodwinds, mallets, synths, guitars, lo-fi textures, drones, nature sounds) and user-saved presets
 - Humanize and Drift (organic timing, velocity and pitch variation), Lo-Fi character with Motion, stereo chorus, multi-head tape-style echo
 - 16-step rhythm machine (patterns, drum kits, polyrhythm, auto-randomize), 16-step melodic sequencer, slow drone chord sequencer, many scales
-- Keyboard input (mouse, touch, computer keyboard, MIDI where supported), hands-free generative "Auto Drone" mode, WAV recording
+- Keyboard input (mouse, touch, computer keyboard when switched on, MIDI via a connect button where supported, pitch and mod wheels), hands-free generative "Auto Drone" mode, WAV recording
 - VFD Racing: a low-poly driving minigame that also runs as a tempo-synced visual
 
 ## Facts

@@ -7,7 +7,7 @@
 // never block the app if offline.
 // ════════════════════════════════════════════════
 
-const CACHE_VERSION = 'metro-highway-v1.9.2';
+const CACHE_VERSION = 'metro-highway-v1.10.0';
 const CACHE_NAME = `metro-highway-cache-${CACHE_VERSION}`;
 
 const APP_SHELL = [

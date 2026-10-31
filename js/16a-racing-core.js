@@ -138,17 +138,20 @@ let roadCenterOffsetPx = 0;
 window.addEventListener('keydown',e=>{
   // 文字入力中（プリセット名など）はゲームのキーを一切使わない（「-」「G」「T」などが入力できなかった。16p）
   if(typeof VfdUI!=='undefined'&&VfdUI.typing(e))return;
+  // PCキーで演奏中（KEYBOARD の PC KEYS = ON）は、ピアノと重なる「文字・数字・記号のキー」のゲームのショートカット（G T F ? - = [ ] ...）を使わない（v1.10.0）。
+  // ←→↑↓・Space・Enter はピアノに使わないので、そのまま使える
+  const pianoKeys=(typeof PCKeyboard!=='undefined'&&PCKeyboard.isOn()&&e.key.length===1&&e.key!==' ');
   // ? = キー一覧、F = フルスクリーン、Esc = 一覧を閉じる（16p）
-  if(typeof VfdUI!=='undefined'&&VfdUI.onKey(e)){e.preventDefault();return;}
+  if(!pianoKeys&&typeof VfdUI!=='undefined'&&VfdUI.onKey(e)){e.preventDefault();return;}
   // 音量: - = で BGM、[ ] でゲーム音（どのモードでも・走行中でも。16n）
-  if(typeof AudioMix!=='undefined'&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&AudioMix.onKey(e)){e.preventDefault();return;}
+  if(!pianoKeys&&typeof AudioMix!=='undefined'&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&AudioMix.onKey(e)){e.preventDefault();return;}
   if(e.key==='ArrowLeft') {keys.L=true;e.preventDefault();}
   if(e.key==='ArrowRight'){keys.R=true;e.preventDefault();}
   if(e.key==='ArrowUp')   {keys.U=true;e.preventDefault();}
   if(e.key==='ArrowDown') {keys.D=true;e.preventDefault();}
   // タイトル画面だけ: ガレージのキー操作（G=開閉 ←→=車 T=強化 ↑↓/Enter=強化ページ）。キーの自動リピート(e.repeat)は無視する
   //（走行中に押しっぱなしだった ←→ が、ゲームオーバー後にリピートして車種が次々に変わるバグの原因だった）
-  if(mode===MODE.DEMO&&!e.repeat&&typeof Garage!=='undefined'&&Garage.onKey(e)){e.preventDefault();return;}
+  if(mode===MODE.DEMO&&!e.repeat&&!pianoKeys&&typeof Garage!=='undefined'&&Garage.onKey(e)){e.preventDefault();return;}
   if((e.key===' '||e.key==='Enter')&&mode!==MODE.PLAY)startGame();
 });
 window.addEventListener('keyup',e=>{

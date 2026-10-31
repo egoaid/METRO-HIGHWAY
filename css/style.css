@@ -1279,3 +1279,20 @@ body input, body textarea, body [contenteditable="true"], body [contenteditable=
   #vfdFullscreenBtn { font-size: 20px !important; }
   #vfdUptimeDisplay { font-size: 10px !important; }
 }
+
+
+/* v1.10.0 — ピッチ/モジュレーションホイール（KEYBOARD の画面上のホイール。外部MIDIのホイールにも追従する） */
+.wheel-row { display: flex; gap: 14px; align-items: center; margin: 0 2px 8px; flex-wrap: wrap; }
+.wheel { display: flex; align-items: center; gap: 8px; flex: 1 1 220px; font-size: 9px; letter-spacing: 2px; color: var(--txt-1); }
+.wheel input[type=range] { flex: 1; min-width: 90px; }
+.wheel-val { min-width: 34px; text-align: right; color: var(--txt-2); letter-spacing: 0; }
+#midiStatus { min-width: 0; }
+#pcKeysBtn.btn-grn, #midiBtn.btn-grn { color: #5df0c8; }
+@media (pointer: coarse) {
+  #pcKeysBtn, #midiBtn, #snapScaleBtn { min-height: 34px; padding: 0 12px; }
+  .wheel input[type=range] { height: 32px; }
+}
+
+.card-head-wrap { height: auto !important; min-height: 38px; flex-wrap: wrap; row-gap: 6px; padding-top: 6px; padding-bottom: 6px; }
+.card-head-wrap .card-actions { flex-wrap: wrap; }
+#midiStatus { margin-left: 0; }

@@ -66,7 +66,7 @@
     <span class="brand-sub">DRONE MACHINE</span>
     <div style="display:flex;align-items:baseline;gap:7px;line-height:1;">
       <span class="brand-name">METRO HIGHWAY</span>
-      <span data-app-version style="font-size:8px;letter-spacing:2px;color:var(--txt-2);padding-bottom:2px;">v1.9.2</span>
+      <span data-app-version style="font-size:8px;letter-spacing:2px;color:var(--txt-2);padding-bottom:2px;">v1.10.0</span>
     </div>
   </div>
   <div class="header-dots">
@@ -395,6 +395,28 @@
       <div class="cg cg-2">
         <div class="ctl"><div class="ctl-label">LFO Rate</div><input id="lfoRate" type="range" min="0" max="20" step="0.1" value="0"><div class="ctl-value" id="lfoRateValue"></div></div>
         <div class="ctl"><div class="ctl-label">LFO Depth</div><input id="lfoDepth" type="range" min="0" max="100" value="0"><div class="ctl-value" id="lfoDepthValue"></div></div>
+      </div>
+
+      <!-- Pitch wheel / Mod wheel（外部MIDIキーボードのホイールと、KEYBOARD の画面上のホイール。プリセットごとに保存） -->
+      <div class="sub-label">Pitch / Mod Wheel</div>
+      <div class="cg cg-2" style="margin-bottom:6px;">
+        <div class="ctl"><div class="ctl-label">Pitch Range</div>
+          <select id="pbRange">
+            <option value="0">OFF</option>
+            <option value="1">±1 SEMI</option>
+            <option value="2" selected>±2 SEMI</option>
+            <option value="3">±3 SEMI</option>
+            <option value="5">±5 SEMI</option>
+            <option value="7">±7 SEMI</option>
+            <option value="12">±12 (OCT)</option>
+            <option value="24">±24 (2 OCT)</option>
+          </select></div>
+        <div class="ctl"><div class="ctl-label">Mod Rate (Hz)</div><input id="modRate" type="range" min="0.2" max="14" step="0.1" value="5.5"><div class="ctl-value" id="modRateValue"></div></div>
+      </div>
+      <div class="cg cg-3">
+        <div class="ctl"><div class="ctl-label">Mod → Vibrato (cent)</div><input id="modVib" type="range" min="0" max="100" step="1" value="30"><div class="ctl-value" id="modVibValue"></div></div>
+        <div class="ctl"><div class="ctl-label">Mod → Filter (oct)</div><input id="modFilter" type="range" min="0" max="5" step="0.1" value="0"><div class="ctl-value" id="modFilterValue"></div></div>
+        <div class="ctl"><div class="ctl-label">Mod → Tremolo (%)</div><input id="modTrem" type="range" min="0" max="100" step="1" value="0"><div class="ctl-value" id="modTremValue"></div></div>
       </div>
     </div>
   </div>
@@ -1025,19 +1047,26 @@
 <div class="part-panel" data-part="keys">
 
   <div class="card">
-    <div class="card-head">
+    <div class="card-head card-head-wrap">
       <span class="card-title">Keyboard</span>
       <div class="card-actions">
+        <button id="pcKeysBtn" class="btn" title="Play with the computer keyboard. While ON, the game's shortcut keys (G T F ? - = [ ]) are disabled.">PC KEYS OFF</button>
+        <button id="midiBtn" class="btn" title="Connect an external MIDI keyboard (the browser asks for permission when you click)">MIDI OFF</button>
+        <span id="midiStatus" class="keyboard-hint"></span>
         <button id="snapScaleBtn" class="btn">SNAP OFF</button>
         <div class="octave-ctrl">
           <button class="octave-btn" id="octDn">−</button>
           <span id="octaveDisplay">OCT: 0</span>
           <button class="octave-btn" id="octUp">＋</button>
         </div>
-        <span class="keyboard-hint">Z–/ lower &nbsp;|&nbsp; Q–] upper</span>
+        <span class="keyboard-hint" id="pcKeysHint">PC keys are off (game shortcuts active)</span>
       </div>
     </div>
     <div class="card-body" style="padding:8px 10px 6px;">
+      <div class="wheel-row">
+        <label class="wheel"><span>PITCH</span><input id="pitchWheel" type="range" min="-1" max="1" step="0.001" value="0" aria-label="Pitch wheel"><span id="pitchWheelValue" class="wheel-val">0</span></label>
+        <label class="wheel"><span>MOD</span><input id="modWheel" type="range" min="0" max="1" step="0.001" value="0" aria-label="Modulation wheel"><span id="modWheelValue" class="wheel-val">0</span></label>
+      </div>
       <div class="keyboard-wrap">
         <div class="keyboard" id="keyboard"></div>
         <div class="keyboard-base"></div>

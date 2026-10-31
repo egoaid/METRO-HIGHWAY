@@ -19,7 +19,7 @@ function captureCurrentSettings() {
   const ids = ['waveform','brightness','resonance','attack','decay','sustain','release',
     'lfoRate','lfoDepth','bitDepth','sampleRate','jitter','drift','speaker','battery','noise',
     'chorusRate','chorusDepth','chorusMix','delayMode','delayTime','delayFeedback','delayMix',
-    'delayBass','delayTreble','delayWow'];
+    'delayBass','delayTreble','delayWow','pbRange','modVib','modFilter','modTrem','modRate'];
   ids.forEach(id => {
     const el = document.getElementById(id);
     if(el) s[id] = el.value;
@@ -88,7 +88,7 @@ document.getElementById('preset').addEventListener('change', e => {
     const name = val.slice(6);
     const s = getUserPresetSettings(name);
     if(s) {
-      applySettings(s);
+      applySettings(Object.assign({}, WHEEL_DEFAULTS, s));      // v1.10.0 より前に保存したプリセットはホイール設定を持たない → 標準値で埋める
       document.getElementById('lcdDisplay').textContent = name.slice(0,8).padEnd(8,'_');
     }
   } else if(presets[val]) {

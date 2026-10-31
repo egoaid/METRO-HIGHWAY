@@ -102,6 +102,11 @@ window.VfdUI = (function(){
     if(isTouch() || typeof mode === 'undefined') return;
     if(window.Garage && Garage.isOpen && Garage.isOpen()) return;
     const t = now() - modeAt, fs = Math.max(11, Math.round(H*0.027));
+    if(window.PCKeyboard && PCKeyboard.isOn() && mode !== MODE.PLAY){         // PCキー演奏中はショートカットが効かない → 押しても無駄なキーを案内せず、理由を出す
+      g.save(); g.font = `${fs}px 'Share Tech Mono',monospace`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#ffd23a'; g.shadowColor = '#ffd23a'; g.shadowBlur = 4;
+      g.fillText('PC KEYS (PIANO) ARE ON — GAME SHORTCUT KEYS ARE OFF', W/2, mode === MODE.OVER ? H*0.655 : H*0.395);
+      g.font = `${Math.round(fs*0.85)}px 'Share Tech Mono',monospace`; g.fillStyle = 'rgba(255,210,58,0.7)'; g.fillText('turn it off in the KEYBOARD card to use G T F ? - = [ ]', W/2, (mode === MODE.OVER ? H*0.655 : H*0.395) + fs*1.5); g.restore(); return;
+    }
     if(mode === MODE.DEMO){
       legendRow(g, [['F','FULL SCREEN'], ['?','ALL KEYS']], H*0.395, fs, 1);                // 開始(SPACE)・ガレージ(G)・音量は、それぞれの表示の中に押すキーを出している
     }else if(mode === MODE.OVER){
@@ -121,11 +126,13 @@ window.VfdUI = (function(){
   function drawHelp(g){
     if(!helpOpen) return;
     const fs = Math.max(12, Math.round(H*0.028)), lh = fs*1.75, colH = col => col.reduce((n, sec) => n + 0.9 + sec[1].length, 0)*lh;
-    const pw = Math.min(W*0.96, fs*50), ph = lh*2.2 + Math.max(colH(HELP_COLS[0]), colH(HELP_COLS[1])) + lh*0.4, px = (W - pw)/2, py = Math.max(H*0.02, (H - ph)/2);
+    const pw = Math.min(W*0.96, fs*50), ph = lh*2.2 + Math.max(colH(HELP_COLS[0]), colH(HELP_COLS[1])) + lh*1.2, px = (W - pw)/2, py = Math.max(H*0.02, (H - ph)/2);
     g.save();
     g.fillStyle = 'rgba(2,10,16,0.92)'; g.fillRect(px, py, pw, ph); g.strokeStyle = 'rgba(93,240,200,0.6)'; g.lineWidth = 1; g.strokeRect(px, py, pw, ph);
     g.textBaseline = 'middle'; g.textAlign = 'left'; g.font = `bold ${Math.round(fs*1.1)}px 'Share Tech Mono',monospace`; g.fillStyle = '#5df0c8';
     g.fillText('KEYBOARD SHORTCUTS', px + fs*1.2, py + lh*0.9);
+    g.save(); g.textAlign = 'left'; g.font = `${Math.round(fs*0.78)}px 'Share Tech Mono',monospace`; g.fillStyle = 'rgba(255,210,58,0.75)';
+    g.fillText('Letter / symbol shortcuts work only while PC KEYS (piano) is OFF — KEYBOARD card', px + fs*1.2, py + ph - lh*0.5); g.restore();
     g.textAlign = 'right'; g.font = `${Math.round(fs*0.8)}px 'Share Tech Mono',monospace`; g.fillStyle = 'rgba(93,240,200,0.5)'; g.fillText('press ? or ESC to close', px + pw - fs*1.2, py + lh*0.9);
     HELP_COLS.forEach((col, ci) => {
       const x0 = px + fs*1.2 + ci*(pw/2); let y = py + lh*2.2;

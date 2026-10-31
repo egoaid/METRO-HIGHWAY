@@ -29,7 +29,9 @@ and nothing you make is sent anywhere.
   tie per step and a wide choice of scales, plus a **Slow Drone Sequencer**
   that shares the scale and plays slow background chords.
 - **Keyboard** — play with mouse, touch or computer keyboard, with octave
-  shift, scale snap and MIDI keyboard support where the browser allows it.
+  shift, scale snap, pitch / mod wheels (on-screen or on an external MIDI keyboard, with a
+  per-sound setup) and an on/off **MIDI** button (nothing is requested until you press it);
+  the computer-keyboard piano is off by default (**PC KEYS**) because it shares keys with the game shortcuts.
 - **Auto Drone** — hands-free generative playback that randomizes
   everything and fades between songs.
 - **Recording** — capture what you hear as a 16-bit stereo WAV file.
@@ -67,8 +69,8 @@ while the app is open (Screen Wake Lock, where the browser supports it).
 ## Browser support
 
 Any modern browser with Web Audio support: recent Chrome, Edge, Firefox and
-Safari, on desktop or mobile. Web MIDI is used automatically where
-available and is optional.
+Safari, on desktop or mobile. Web MIDI is optional and used only after you
+press the MIDI button (Chrome / Edge; not Safari or iOS).
 
 ## Privacy
 

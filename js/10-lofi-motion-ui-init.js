@@ -70,7 +70,7 @@ document.getElementById('loficlearBtn').onclick = () => {
 document.getElementById('lofiMotionSpeedVal').textContent = _lofiMotionSpeedLabel(lofiMotion.speed);
 document.getElementById('lofiMotionDepthVal').textContent = _lofiMotionDepthLabel(lofiMotion.depth);
 
-initMIDI();
+// MIDI はここでは接続しない（KEYBOARD の MIDI ボタンを押したときだけ接続する。03）
 applySettings(defaults);
 
 // ── iOS Safari AudioContext safety (Pass 2) ──

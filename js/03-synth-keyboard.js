@@ -15,6 +15,13 @@ function getSharedNoiseBuffer() {
 
 
 
+// ── PCキーボードで演奏する（v1.10.0）──
+// 初期値はオフ。ゲームのショートカットキー（G T F ? - = [ ]）とキーが重なるため:
+//   オン  = PCキーで演奏できる / ゲームのショートカットは使えない（16a が見る）
+//   オフ  = PCキーでは鳴らない / ゲームのショートカットが使える
+//   ゲームがフルスクリーンになったら自動でオフ（'vfd-fullscreenchange'。戻した後も自動ではオンに戻さない）
+let pcKeysEnabled = false;
+
 // ── オクターブシフト ──
 let octaveShift = 0;
 
@@ -151,7 +158,8 @@ const defaults = {
   jitter:0, drift:0, speaker:4000, battery:0, noise:0,
   chorusRate:0.1, chorusDepth:0, chorusMix:0,
   delayMode:'single', delayTime:0.02, delayFeedback:0, delayMix:0,
-  delayBass:0, delayTreble:0, delayWow:0
+  delayBass:0, delayTreble:0, delayWow:0,
+  pbRange:2, modVib:30, modFilter:0, modTrem:0, modRate:5.5      // ピッチホイールの範囲(半音) / モジュレーションホイール: ビブラート(cent)・フィルター(oct)・トレモロ(%)・速さ(Hz)
 };
 
 const lofiDefaults = { bitDepth:16, sampleRate:1, jitter:0, drift:0, battery:0, noise:0 };
@@ -256,6 +264,77 @@ const presets = {
   insects:{waveform:'square',brightness:3500,resonance:1,attack:0.01,decay:0.08,sustain:0.6,release:0.15,lfoRate:14,lfoDepth:8,bitDepth:6,sampleRate:0.1,jitter:18,drift:8,speaker:2800,battery:0,noise:45,chorusRate:4,chorusDepth:0.005,chorusMix:0.25,...dp('double',0.05,0.3,0.2,-1,1,0.2)},
 };
 
+// ── ホイール設定（v1.10.0）: 各音色に合った ピッチホイール範囲 / モジュレーションホイールの効き方 ──
+// pb  = ピッチホイールの範囲（±半音。0 = 効かない）
+// vib = モジュレーション → ビブラートの深さ（cent。LFO によるピッチ変調）
+// flt = モジュレーション → フィルターの開き（oct。ホイールを上げるほど明るく）
+// trm = モジュレーション → トレモロ（音量の揺れの深さ %）
+// rate= ビブラート/トレモロの速さ（Hz）
+// 考え方: 弦・管・リードは vib が主（実際の奏法のビブラート）、ブラスは flt（吹き込むと明るくなる）、電気ピアノ・ビブラフォン・オルガンは trm（トレモロ/レスリー）、
+//         パッドやドローンは flt+ゆっくりした trm（うねり）、環境音は大きな pb と深い変調（演出用）。打楽器系は pb を小さく。
+const WHEEL_DEFAULTS = { pbRange:2, modVib:30, modFilter:0, modTrem:0, modRate:5.5 };
+const WHEEL_PRESETS = {
+  init:          { pb:2,  vib:30,  flt:0,   trm:0,   rate:5.5 },
+  // PIANO
+  elecPiano:     { pb:2,  vib:8,   flt:1,   trm:45,  rate:5 },     // Rhodes のトレモロ
+  mtPiano:       { pb:2,  vib:12,  flt:0.8, trm:0,   rate:5 },
+  // ORGAN
+  pipeOrgan:     { pb:1,  vib:0,   flt:0.5, trm:40,  rate:6.5 },   // レスリー風の揺れ
+  mtOrgan:       { pb:1,  vib:20,  flt:0,   trm:0,   rate:6 },
+  // STRINGS
+  strings2:      { pb:2,  vib:45,  flt:1.5, trm:0,   rate:5.2 },
+  violin:        { pb:2,  vib:60,  flt:1.2, trm:0,   rate:5.5 },
+  mtStrings:     { pb:2,  vib:40,  flt:1.2, trm:0,   rate:5 },
+  mtViolin:      { pb:2,  vib:50,  flt:1,   trm:0,   rate:5.5 },
+  // BRASS
+  trumpet:       { pb:2,  vib:35,  flt:2,   trm:0,   rate:5.5 },
+  brass:         { pb:2,  vib:25,  flt:2.5, trm:0,   rate:5 },
+  mtBrass:       { pb:2,  vib:20,  flt:2,   trm:0,   rate:5 },
+  mtTrumpet:     { pb:2,  vib:30,  flt:1.8, trm:0,   rate:5.5 },
+  // WOODWIND
+  clarinet:      { pb:2,  vib:30,  flt:1.5, trm:0,   rate:5.5 },
+  saxophone:     { pb:2,  vib:50,  flt:1.8, trm:0,   rate:5.5 },
+  mtFlute:       { pb:2,  vib:40,  flt:1,   trm:0,   rate:5 },
+  mtHarmonica:   { pb:2,  vib:35,  flt:1.2, trm:25,  rate:5.5 },   // 手のワウ
+  // MALLET
+  bell:          { pb:2,  vib:10,  flt:1.5, trm:35,  rate:6 },
+  mtMarimba:     { pb:1,  vib:0,   flt:0.8, trm:35,  rate:7 },
+  mtVibraphone:  { pb:1,  vib:0,   flt:0.5, trm:60,  rate:5 },     // モーターのトレモロ
+  mtXylophone:   { pb:1,  vib:0,   flt:1,   trm:30,  rate:8 },
+  mtBanjo:       { pb:2,  vib:15,  flt:1,   trm:0,   rate:6 },
+  // SYNTH
+  synthLead:     { pb:2,  vib:60,  flt:2.5, trm:0,   rate:5.5 },
+  synthPad:      { pb:2,  vib:20,  flt:3,   trm:0,   rate:3.5 },
+  synthBass:     { pb:2,  vib:10,  flt:3.5, trm:0,   rate:4 },
+  mtGuitar:      { pb:2,  vib:40,  flt:1,   trm:0,   rate:5.5 },
+  mtBass:        { pb:2,  vib:10,  flt:1.5, trm:0,   rate:4.5 },
+  // LO-FI
+  vhsPad:        { pb:1,  vib:30,  flt:2,   trm:25,  rate:3 },     // テープのワウ
+  brokenCassette:{ pb:12, vib:80,  flt:2,   trm:40,  rate:2.5 },   // テープが滑る
+  gameboyLead:   { pb:2,  vib:25,  flt:0,   trm:0,   rate:7 },
+  hauntedToy:    { pb:12, vib:70,  flt:1.5, trm:30,  rate:3 },
+  mtHarpsichord: { pb:1,  vib:0,   flt:1.5, trm:0,   rate:5 },
+  mtChoirPad:    { pb:2,  vib:25,  flt:2,   trm:15,  rate:4.5 },
+  mtFantasia:    { pb:7,  vib:60,  flt:2.5, trm:20,  rate:3 },
+  // DRONE
+  tibetanBowl:   { pb:2,  vib:12,  flt:1.5, trm:50,  rate:2.2 },   // うなり
+  tanpura:       { pb:2,  vib:10,  flt:2.5, trm:20,  rate:1.8 },
+  shimmerDrone:  { pb:2,  vib:15,  flt:3,   trm:30,  rate:2.5 },
+  subOctave:     { pb:2,  vib:8,   flt:2,   trm:25,  rate:0.8 },
+  organPoint:    { pb:1,  vib:10,  flt:1.5, trm:35,  rate:5 },
+  // NATURE
+  ocean:         { pb:12, vib:40,  flt:4,   trm:60,  rate:0.4 },
+  rain:          { pb:7,  vib:20,  flt:3,   trm:50,  rate:0.8 },
+  stream:        { pb:7,  vib:50,  flt:3,   trm:40,  rate:0.9 },
+  birds:         { pb:12, vib:100, flt:2,   trm:50,  rate:9 },
+  insects:       { pb:5,  vib:60,  flt:1.5, trm:90,  rate:12 },
+};
+// 全プリセットにホイール設定を書き込む（init は defaults と同じ値）
+Object.keys(presets).forEach(name => {
+  const w = WHEEL_PRESETS[name] || WHEEL_PRESETS.init;
+  Object.assign(presets[name], { pbRange:w.pb, modVib:w.vib, modFilter:w.flt, modTrem:w.trm, modRate:w.rate });
+});
+
 // ── UI helpers ──
 function updateValues() {
   document.querySelectorAll('input[type=range]').forEach(el => {
@@ -284,7 +363,8 @@ function randomize() {
     speaker:[2000,5500], battery:[0,12], noise:[0,10],
     chorusRate:[0.1,3], chorusDepth:[0,0.008], chorusMix:[0,0.35],
     delayTime:[0.02,0.6], delayFeedback:[0,0.55], delayMix:[0,0.35],
-    delayBass:[-6,4], delayTreble:[-6,4], delayWow:[0,0.3]
+    delayBass:[-6,4], delayTreble:[-6,4], delayWow:[0,0.3],
+    modVib:[0,70], modFilter:[0,3.5], modTrem:[0,60], modRate:[2,9]          // モジュレーションホイールの効き方
   };
   Object.entries(safeRanges).forEach(([id,[min,max]]) => {
     const el = document.getElementById(id);
@@ -292,7 +372,12 @@ function randomize() {
   });
   const waves = ['square','sawtooth','triangle','sine'];
   document.getElementById('waveform').value = waves[Math.floor(Math.random()*waves.length)];
+  // ピッチホイールの範囲（よく使う値が出やすいように重みをつける）
+  const pbChoices = [1,2,2,2,3,5,7,12];
+  const pbEl = document.getElementById('pbRange');
+  if(pbEl) pbEl.value = String(pbChoices[Math.floor(Math.random()*pbChoices.length)]);
   updateValues();
+  if(typeof applyWheels === 'function') applyWheels();
 }
 
 // ── AudioEngine ──
@@ -335,6 +420,41 @@ function createNoise(amount) {
   gainNode.stop  = (t) => { try { source.stop(t); } catch(_) {} };
   return gainNode;
 }
+
+// ── ピッチホイール / モジュレーションホイール（v1.10.0）──
+// 対象は「鍵盤で弾いた音」（画面の鍵盤・PCキー・外部MIDI）。シーケンサー/ドローンの音には効かない。
+//  ピッチ: osc.detune = bend × 範囲(半音) × 100 cent
+//  モジュレーション: ビブラート = modLFO → osc.detune（深さ = mod × modVib cent）
+//                    フィルター = filter.detune = mod × modFilter × 1200 cent（ホイールを上げるほど明るく）
+//                    トレモロ   = ボイスの出口の音量を modLFO で揺らす（深さ = mod × modTrem %）
+// 値の範囲は ホイール位置 0..1 / -1..1。設定（範囲・深さ・速さ）は TONE のスライダー（プリセットごと）から読む。
+const wheel = { bend: 0, mod: 0 };
+function wheelParams() {
+  const n = id => { const e = document.getElementById(id); const v = e ? parseFloat(e.value) : 0; return isNaN(v) ? 0 : v; };
+  return { range: n('pbRange'), vib: n('modVib'), flt: n('modFilter'), trem: n('modTrem'), rate: n('modRate') || 5.5 };
+}
+function applyWheelsToVoice(v, immediate) {
+  if(!v || !v.isKb) return;
+  const P = wheelParams(), t = ctx.currentTime;
+  const set = (param, val) => { try { if(immediate) param.setValueAtTime(val, t); else param.setTargetAtTime(val, t, 0.012); } catch(_) {} };
+  set(v.osc.detune, wheel.bend * P.range * 100);
+  set(v.filter.detune, wheel.mod * P.flt * 1200);
+  if(v.modLfo) { try { v.modLfo.frequency.setValueAtTime(P.rate, t); } catch(_) {} }
+  if(v.vibGain) set(v.vibGain.gain, wheel.mod * P.vib);
+  if(v.tremDepth) { const d = wheel.mod * (P.trem / 100) * 0.5; set(v.tremDepth.gain, d); set(v.trem.gain, 1 - d); }
+}
+function applyWheels() { activeVoices.forEach(v => applyWheelsToVoice(v, false)); }
+function updateWheelUI() {
+  const P = wheelParams();
+  const pw = document.getElementById('pitchWheel'), mw = document.getElementById('modWheel');
+  const pv = document.getElementById('pitchWheelValue'), mv = document.getElementById('modWheelValue');
+  if(pw && parseFloat(pw.value) !== wheel.bend) pw.value = wheel.bend;
+  if(mw && parseFloat(mw.value) !== wheel.mod) mw.value = wheel.mod;
+  if(pv) pv.textContent = (wheel.bend * P.range >= 0 ? '+' : '') + (wheel.bend * P.range).toFixed(1) + ' st';
+  if(mv) mv.textContent = Math.round(wheel.mod * 100) + '%';
+}
+function setPitchBend(v) { wheel.bend = Math.max(-1, Math.min(1, v)); applyWheels(); updateWheelUI(); }
+function setModWheel(v)  { wheel.mod  = Math.max(0, Math.min(1, v));  applyWheels(); updateWheelUI(); }
 
 // ── noteOn v1.3: lightweight per-voice chain ──
 // FX (chorus/echo) are now shared buses — NOT per voice.
@@ -425,7 +545,21 @@ function noteOn(freq, id, settingsOverride, velocityScale, _destGain) {
   filter.connect(speakerFilt);
   speakerFilt.connect(saturator);
   saturator.connect(gain);
-  gain.connect(destGain);
+
+  // ── ホイール用（鍵盤で弾いた音だけ）: ビブラート/トレモロが設定されている時だけ LFO 等を作る ──
+  const isKb = (destGain === keyboardGain);
+  let modLfo = null, vibGain = null, tremDepth = null, trem = null;
+  if(isKb) {
+    const WP = wheelParams();
+    if(WP.vib > 0 || WP.trem > 0) {
+      modLfo = ctx.createOscillator(); modLfo.type = 'sine'; modLfo.frequency.value = WP.rate;
+      vibGain = ctx.createGain(); vibGain.gain.value = 0; modLfo.connect(vibGain); vibGain.connect(osc.detune);
+      tremDepth = ctx.createGain(); tremDepth.gain.value = 0; trem = ctx.createGain(); trem.gain.value = 1;
+      modLfo.connect(tremDepth); tremDepth.connect(trem.gain);
+    }
+  }
+  if(trem) { gain.connect(trem); trem.connect(destGain); }
+  else gain.connect(destGain);
 
   // ── Noise floor ──
   const noise = createNoise(noiseAmount);
@@ -450,12 +584,16 @@ function noteOn(freq, id, settingsOverride, velocityScale, _destGain) {
   osc.start();
   lfo.start();
   noise.start();
+  if(modLfo) modLfo.start();
 
-  activeVoices.set(id, {
+  const voice = {
     osc, gain, filter, speakerFilt, saturator,
     lfo, lfoGain, noise,
-    release, jitter: jitterInterval
-  });
+    release, jitter: jitterInterval,
+    isKb, modLfo, vibGain, tremDepth, trem
+  };
+  activeVoices.set(id, voice);
+  if(isKb) applyWheelsToVoice(voice, true);          // 弾き始めの時点のホイール位置を反映
 }
 
 
@@ -475,11 +613,13 @@ function noteOff(id) {
   voice.osc.stop(stopAt);
   voice.lfo.stop(stopAt);
   voice.noise.stop(stopAt);
+  if(voice.modLfo) { try { voice.modLfo.stop(stopAt); } catch(_) {} }
 
   voice.osc.onended = () => {
     [voice.osc, voice.filter, voice.speakerFilt,
      voice.saturator, voice.lfo, voice.lfoGain,
-     voice.gain, voice.noise].forEach(n => {
+     voice.gain, voice.noise, voice.modLfo, voice.vibGain, voice.tremDepth, voice.trem].forEach(n => {
+      if(!n) return;
       try { n.disconnect(); } catch(_) {}
     });
     try { if(voice.noise._noiseSrc) voice.noise._noiseSrc.disconnect(); } catch(_) {}
@@ -549,7 +689,8 @@ function rebuildKeyLabels() {
     const span = el.querySelector('.key-kb');
     if(span) span.textContent = '';
   });
-  // 現在のオクターブシフトに基づいてラベルを設定
+  // 現在のオクターブシフトに基づいてラベルを設定（PCキー演奏がオフの間は出さない）
+  if(!pcKeysEnabled) return;
   Object.entries(KEY_TO_NOTE).forEach(([k, entry]) => {
     const baseMidi = (entry.oct + 1) * 12 + entry.semi;
     const midi = baseMidi + octaveShift * 12;
@@ -567,6 +708,7 @@ rebuildKeyLabels();
 const heldKeys = new Set();
 
 window.addEventListener('keydown', async e => {
+  if(!pcKeysEnabled) return;                       // PCキー演奏がオフの間は何もしない（ゲームのショートカットを優先）
   const active = document.activeElement;
   // テキスト入力中はピアノ処理をスキップ（blurもしない）
   if(active && active.tagName === 'INPUT' && active.type === 'text') return;
@@ -601,6 +743,7 @@ window.addEventListener('keydown', async e => {
 
 window.addEventListener('keyup', e => {
   const k = e.key.toLowerCase();
+  if(!pcKeysEnabled && !heldKeys.has(k)) return;
   heldKeys.delete(k);
 
   const midi = keyToMidi(k);
@@ -612,6 +755,43 @@ window.addEventListener('keyup', e => {
   const el = keyEls.get(midi);
   if(el) el.classList.remove('pressed');
 });
+
+function setPcKeys(on) {
+  on = !!on;
+  if(on === pcKeysEnabled) return;
+  pcKeysEnabled = on;
+  if(!on) {                                         // 押しっぱなしの音を止める
+    heldKeys.forEach(k => {
+      noteOff(`kb_${k}`);
+      const m = keyToMidi(k); const el = m !== null ? keyEls.get(m) : null;
+      if(el) el.classList.remove('pressed');
+    });
+    heldKeys.clear();
+  }
+  const btn = document.getElementById('pcKeysBtn'), hint = document.getElementById('pcKeysHint');
+  if(btn) { btn.textContent = on ? 'PC KEYS ON' : 'PC KEYS OFF'; btn.classList.toggle('btn-grn', on); btn.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+  if(hint) hint.textContent = on ? 'Z–/ lower | Q–] upper  ·  game shortcuts are OFF' : 'PC keys are off (game shortcuts active)';
+  rebuildKeyLabels();
+}
+document.getElementById('pcKeysBtn').addEventListener('click', e => { setPcKeys(!pcKeysEnabled); e.currentTarget.blur(); });
+// ゲームがフルスクリーンになったら自動でオフ
+document.addEventListener('vfd-fullscreenchange', e => { if(e && e.detail && e.detail.active) setPcKeys(false); });
+window.PCKeyboard = { isOn: () => pcKeysEnabled, set: setPcKeys };
+
+// ── ホイールの画面上の操作 ──
+(function() {
+  const pw = document.getElementById('pitchWheel'), mw = document.getElementById('modWheel');
+  pw.addEventListener('input', () => setPitchBend(parseFloat(pw.value)));
+  const spring = () => setPitchBend(0);             // ピッチホイールは離すと中央に戻る（音は 12ms のなめらかさで戻る）
+  ['pointerup', 'pointercancel', 'mouseup', 'touchend', 'touchcancel', 'blur'].forEach(ev => pw.addEventListener(ev, spring));
+  mw.addEventListener('input', () => setModWheel(parseFloat(mw.value)));
+  ['pbRange', 'modVib', 'modFilter', 'modTrem', 'modRate'].forEach(id => {
+    const el = document.getElementById(id); if(!el) return;
+    el.addEventListener('input', () => { applyWheels(); updateWheelUI(); });
+    el.addEventListener('change', () => { applyWheels(); updateWheelUI(); });
+  });
+  updateWheelUI();
+})();
 
 // ── スライダーイベント ──
 document.querySelectorAll('input[type=range]').forEach(el => {
@@ -645,25 +825,82 @@ document.getElementById('randomBtn').onclick = () => {
   document.getElementById('lcdDisplay').textContent = 'RANDOM__';
 };
 
-// ── MIDI ──
-async function initMIDI() {
-  if(!navigator.requestMIDIAccess) return;
-  try {
-    const midi = await navigator.requestMIDIAccess();
-    for(const input of midi.inputs.values()) {
-      input.onmidimessage = async msg => {
-        await ctx.resume();
-        startSharedFxLfos();
-        const [status, note, velocity] = msg.data;
-        const command = status & 0xf0;
-        const snappedMidi = snapMidi(note);
-        const freq = midiToFreq(snappedMidi);
-        if(command === 0x90 && velocity > 0) noteOn(freq, `midi_${note}`, null, velocity/127, keyboardGain);
-        if(command === 0x80 || (command === 0x90 && velocity === 0)) noteOff(`midi_${note}`);
-      };
-    }
-  } catch(err) {
-    // MIDI unavailable in this environment (permissions policy etc.) — silent fallback
+// ── MIDI（v1.10.0）──
+// 起動時には接続しない（以前はアプリを開くとすぐブラウザが MIDI の許可を求めていた）。
+// KEYBOARD の「MIDI」ボタンを押したときだけ requestMIDIAccess を呼ぶ。初期値はオフ。もう一度押すと切断する。
+//  対応: ノート ON/OFF、ピッチベンド(0xE0 = ±8192)、モジュレーション(CC1)、CC121(リセット)、CC123(全ノートオフ)
+let midiAccess = null, midiOn = false;
+function midiSetStatus(text, title) {
+  const st = document.getElementById('midiStatus');
+  if(st) { st.textContent = text || ''; st.title = title || ''; }
+}
+function midiReleaseAll() {
+  Array.from(activeVoices.keys()).forEach(id => { if(String(id).startsWith('midi_')) noteOff(id); });
+}
+function handleMidiMessage(data) {
+  const status = data[0], command = status & 0xf0, d1 = data[1], d2 = data[2];
+  if(command === 0xE0) {                                           // ピッチベンド（14bit。中央 8192）
+    const raw = ((d2 << 7) | d1) - 8192;
+    setPitchBend(raw < 0 ? raw / 8192 : raw / 8191);
+    return;
+  }
+  if(command === 0xB0) {                                           // コントロールチェンジ
+    if(d1 === 1) setModWheel(d2 / 127);                            // モジュレーションホイール
+    else if(d1 === 121) { wheel.bend = 0; wheel.mod = 0; applyWheels(); updateWheelUI(); }   // リセットオールコントローラー
+    else if(d1 === 123 || d1 === 120) midiReleaseAll();            // オールノートオフ / オールサウンドオフ
+    return;
+  }
+  const note = d1, velocity = d2;
+  if(command === 0x90 && velocity > 0) {
+    ctx.resume(); startSharedFxLfos();
+    const snappedMidi = snapMidi(note);
+    noteOn(midiToFreq(snappedMidi), `midi_${note}`, null, velocity / 127, keyboardGain);
+  } else if(command === 0x80 || (command === 0x90 && velocity === 0)) {
+    noteOff(`midi_${note}`);
   }
 }
-
+function midiBindInputs() {
+  if(!midiAccess) return;
+  let n = 0; const names = [];
+  for(const input of midiAccess.inputs.values()) {
+    input.onmidimessage = midiOn ? (msg => handleMidiMessage(msg.data)) : null;
+    if(midiOn) { n++; names.push(input.name || 'MIDI IN'); }
+  }
+  if(midiOn) midiSetStatus(n ? `ON · ${n} IN` : 'ON · NO DEVICE', n ? names.join(', ') : 'Plug in a MIDI keyboard — it is picked up automatically');
+}
+function midiButtonUI() {
+  const btn = document.getElementById('midiBtn'); if(!btn) return;
+  btn.textContent = midiOn ? 'MIDI ON' : 'MIDI OFF';
+  btn.classList.toggle('btn-grn', midiOn);
+  btn.setAttribute('aria-pressed', midiOn ? 'true' : 'false');
+}
+async function midiConnect() {
+  if(midiOn) return true;
+  if(!navigator.requestMIDIAccess) { midiSetStatus('N/A', 'This browser does not support Web MIDI'); return false; }
+  try {
+    midiAccess = await navigator.requestMIDIAccess();
+  } catch(err) {
+    midiSetStatus('DENIED', 'MIDI access was not allowed (browser permission / policy)');
+    midiOn = false; midiButtonUI(); return false;
+  }
+  midiOn = true;
+  midiAccess.onstatechange = () => midiBindInputs();               // あとから抜き差ししても追従
+  midiBindInputs(); midiButtonUI(); return true;
+}
+function midiDisconnect() {
+  midiOn = false;
+  if(midiAccess) { for(const input of midiAccess.inputs.values()) input.onmidimessage = null; midiAccess.onstatechange = null; }
+  midiReleaseAll();
+  wheel.bend = 0; wheel.mod = 0; applyWheels(); updateWheelUI();
+  midiSetStatus(''); midiButtonUI();
+}
+document.getElementById('midiBtn').addEventListener('click', async e => {
+  const btn = e.currentTarget; btn.blur();
+  if(midiOn) midiDisconnect(); else await midiConnect();
+});
+if(!navigator.requestMIDIAccess) {                                 // 非対応ブラウザ（iOS Safari など）では押せないことを先に見せる
+  const b = document.getElementById('midiBtn');
+  if(b) { b.disabled = true; b.textContent = 'MIDI N/A'; }
+  midiSetStatus('', 'This browser does not support Web MIDI');
+}
+window.SynthMIDI = { connect: midiConnect, disconnect: midiDisconnect, isOn: () => midiOn, handle: handleMidiMessage };
